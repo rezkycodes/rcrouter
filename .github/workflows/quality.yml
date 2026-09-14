@@ -2,6 +2,7 @@ name: Quality
 
 on:
   pull_request:
+  workflow_dispatch:
   workflow_call:
 
 permissions:
@@ -64,6 +65,9 @@ jobs:
       - name: Install Worker dependencies
         working-directory: cloud
         run: pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
+
+      - name: Deterministic Worker smoke fixture
+        run: pnpm run release:cloud-smoke
 
       - name: Wrangler bundle dry-run
         working-directory: cloud
