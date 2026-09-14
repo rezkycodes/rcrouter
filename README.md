@@ -203,7 +203,7 @@ systemctl --user enable --now rcrouter.service
 ```bash
 pnpm install --frozen-lockfile
 pnpm test                              # regression gate against reviewed baseline
-pnpm test:raw                          # full Vitest output, including known debt
+pnpm test:raw                          # full Vitest output
 pnpm test:focused tests/unit/capabilities.test.js
 pnpm lint                              # lint regression gate against reviewed baseline
 pnpm lint:raw                          # full ESLint output, including known debt
@@ -211,9 +211,11 @@ pnpm check                             # lint + regression gate
 pnpm run build
 ```
 
-The full suite is not yet all-green. The reviewed baseline and its failure
-classification are documented in `tests/__baseline__/README.md`; do not update
-the snapshot merely to hide a new failure.
+The offline suite is green: all runnable tests pass. `pnpm test` still compares
+against the historical reviewed baseline in `tests/__baseline__/README.md` so
+future regressions remain visible; do not refresh that snapshot merely to hide
+a new failure. Live/real-provider tests remain explicitly gated on credentials
+or `RUN_LIVE_TESTS=1`.
 
 Account capacity is process-local. Set a connection's `maxConcurrency` to a
 positive number to cap in-flight upstream requests, or `0`/`null` to bypass

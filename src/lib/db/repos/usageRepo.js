@@ -247,7 +247,11 @@ export async function saveRequestUsage(entry) {
   try {
     const db = await getAdapter();
 
-    if (!entry.timestamp) entry.timestamp = new Date().toISOString();
+    // A caller-supplied timestamp is the idempotency key. When omitted, each
+    // invocation represents a distinct request even if several calls happen
+    // within the same millisecond and receive the same generated timestamp.
+    const hasExplicitTimestamp = Boolean(entry.timestamp);
+    if (!hasExplicitTimestamp) entry.timestamp = new Date().toISOString();
     entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
 
     const tokens = entry.tokens || {};
@@ -259,7 +263,7 @@ export async function saveRequestUsage(entry) {
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
     db.transaction(() => {
-      const existing = db.get(
+      const existing = hasExplicitTimestamp && db.get(
         `SELECT id, endpoint FROM usageHistory
          WHERE timestamp = ?
            AND COALESCE(provider, '') = COALESCE(?, '')

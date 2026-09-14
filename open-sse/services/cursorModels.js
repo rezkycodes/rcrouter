@@ -144,6 +144,30 @@ async function fetchCursorCatalog(credentials, signal) {
   delete headers["connect-accept-encoding"];
   delete headers["connect-protocol-version"];
 
+  // Prefer the platform fetch implementation. This keeps the resolver easy
+  // to exercise in runtimes that provide a Fetch API; Node's undici may reject
+  // Cursor's HTTP/2-only endpoint, in which case use the native h2 transport.
+  if (typeof globalThis.fetch === "function") {
+    try {
+      const response = await globalThis.fetch(url, {
+        method: "POST",
+        headers,
+        body: new Uint8Array(),
+        signal,
+      });
+      if (response.status !== 200) {
+        const error = new Error(`Cursor GetUsableModels returned ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return parseCursorUsableModels(new Uint8Array(await response.arrayBuffer()));
+    } catch (error) {
+      // Preserve explicit upstream HTTP failures. Transport-level failures
+      // fall through to HTTP/2, which is required by Cursor in Node.
+      if (error?.status) throw error;
+    }
+  }
+
   const response = await http2PostProto(url, headers, new Uint8Array(), signal, FETCH_TIMEOUT_MS);
   if (response.status !== 200) {
     const error = new Error(`Cursor GetUsableModels returned ${response.status}`);

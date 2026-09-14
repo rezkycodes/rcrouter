@@ -4,9 +4,21 @@ import { FORMATS } from "../translator/formats.js";
 export function parseSSELine(line, format = null) {
   if (!line) return null;
 
+  // Accept raw JSON/NDJSON lines even when the caller has not supplied a
+  // provider format. Several OpenAI-compatible gateways advertise SSE while
+  // emitting plain JSON chunks; parsing the unambiguous object form here keeps
+  // the stream helper format-agnostic.
+  const trimmed = line.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      // Fall through to the normal SSE parser so malformed lines remain null.
+    }
+  }
+
   // NDJSON format (Ollama): raw JSON lines without "data:" prefix
   if (format === FORMATS.OLLAMA) {
-    const trimmed = line.trim();
     if (trimmed.startsWith("{")) {
       try {
         return JSON.parse(trimmed);

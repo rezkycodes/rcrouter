@@ -322,9 +322,13 @@ export class KiroExecutor extends BaseExecutor {
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
     const q = amazon.filter((u) => u.includes("://q."));
     const remaining = amazon.filter((u) => !u.includes("://q."));
-    return q.length > 0
-      ? [...q, ...remaining, ...others]
-      : [...amazon, ...others];
+    // Microsoft Entra/enterprise tokens are accepted by CodeWhisperer, not
+    // the Amazon Q surface. Keep CodeWhisperer first for this auth method;
+    // API-key and other AWS credentials retain the Q-first failover order.
+    if (authMethod === "external_idp") {
+      return [...remaining, ...q, ...others];
+    }
+    return q.length > 0 ? [...q, ...remaining, ...others] : [...amazon, ...others];
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {

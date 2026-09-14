@@ -22,6 +22,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
 const BASE64_BLOCK_SIZE = 4;
 
 let cachedDiscovery = null;
+let cachedDiscoveryFetch = null;
 
 export function validateOAuthEndpoint(rawUrl, field) {
   const value = String(rawUrl || "").trim();
@@ -50,7 +51,7 @@ export function validateOAuthEndpoint(rawUrl, field) {
  * Discover authorization + token endpoints. Cached process-wide.
  */
 export async function discoverEndpoints() {
-  if (cachedDiscovery) return cachedDiscovery;
+  if (cachedDiscovery && cachedDiscoveryFetch === globalThis.fetch) return cachedDiscovery;
 
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, {
@@ -62,6 +63,7 @@ export async function discoverEndpoints() {
         authorizeUrl: validateOAuthEndpoint(data.authorization_endpoint, "authorization_endpoint"),
         tokenUrl: validateOAuthEndpoint(data.token_endpoint, "token_endpoint"),
       };
+      cachedDiscoveryFetch = globalThis.fetch;
       return cachedDiscovery;
     }
   } catch {
@@ -72,6 +74,7 @@ export async function discoverEndpoints() {
     authorizeUrl: XAI_CONFIG.authorizeUrl,
     tokenUrl: XAI_CONFIG.tokenUrl,
   };
+  cachedDiscoveryFetch = globalThis.fetch;
   return cachedDiscovery;
 }
 

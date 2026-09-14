@@ -193,7 +193,18 @@ export function detectRequiredCapabilities(body) {
   const contents = body.contents || body.request?.contents;                      // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
 
-  // search: temporarily disabled in auto-switch (feature not wired yet).
+  // Search tools are a capability requirement even when the user turn is
+  // text-only. Keep both the native Claude name and the OpenAI function shape
+  // recognized so Auto Combo does not select a model that cannot search.
+  if (Array.isArray(body.tools)) {
+    const needsSearch = body.tools.some((tool) =>
+      tool?.type === "web_search" ||
+      tool?.name === "web_search" ||
+      tool?.function?.name === "web_search" ||
+      tool?.function?.name === "web_search_preview",
+    );
+    if (needsSearch) required.add("search");
+  }
 
   return required;
 }

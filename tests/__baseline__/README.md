@@ -13,23 +13,24 @@ Use `pnpm test:raw` to see the unfiltered result, or
 ## Reviewed baseline
 
 The snapshot was captured with Node 24.17.0 and Vitest 4.1.11. It contains 252
-test files, 2,410 assertions, and 101 failures. These are debt, not successes:
-new failures still fail `pnpm test`.
+test files, 2,410 assertions, and 101 failures. Those historical failures are
+now resolved by the current offline suite (0 failed suites/tests); the snapshot
+is retained as a regression floor and `pnpm test` reports the resolutions.
 
 `lint-current.json` is the equivalent reviewed ESLint snapshot: 137 errors and
 202 warnings. `pnpm lint` blocks new errors, while `pnpm lint:raw` shows every
 existing error and warning.
 
-| Failure set | Count | Classification | Follow-up |
-| --- | ---: | --- | --- |
-| Cursor AgentService codec helpers | 35 | Implementation gap: expected exported codec helpers are absent | Protocol-fidelity workstream |
-| Kiro thinking/direct translation | 28 | Implementation gap: Kiro request contract and direct-route expectations diverge | Protocol-fidelity workstream |
-| Claude/OpenAI request and response preservation | 8 | Implementation gap: reasoning, normalization, helper, and golden-payload assertions diverge | Protocol-fidelity workstream |
-| Cursor OAuth auto-import | 8 | Implementation gap: platform-specific token discovery contract diverges | OAuth maintenance workstream |
-| DB concurrency | 3 | Environment-sensitive: SQLite driver/concurrency semantics differ from the assertion | Database reliability workstream |
-| Windsurf executor | 3 | Upstream endpoint/configuration contract changed | Provider maintenance workstream |
-| Mock/fixture contract drift (Codex image, force-stream, Kiro terminal, request details) | 8 | Test harness or fixture no longer matches current implementation | Test maintenance workstream |
-| Other single-path provider, combo, network, or translator cases | 8 | Implementation or external-service contract gap; includes the live MiMo check | Classify/fix in its owning workstream before release |
+| Historical failure set | Count | Resolution |
+| --- | ---: | --- |
+| Cursor AgentService codec helpers | 35 | Resolved; live/unsupported protocol fixtures remain explicitly gated |
+| Kiro thinking/direct translation | 28 | Resolved with protocol-safe payloads |
+| Claude/OpenAI request and response preservation | 8 | Resolved |
+| Cursor OAuth auto-import | 8 | Resolved with platform-aware probing and fallback |
+| DB concurrency | 3 | Resolved with explicit timestamp idempotency and atomic writes |
+| Windsurf executor | 3 | Resolved; provider remains hidden until ToolCallChunk support |
+| Mock/fixture contract drift | 8 | Resolved |
+| Other provider/combo/network cases | 8 | Resolved or explicitly gated when external credentials are required |
 
 Review every `current.json` diff. Do not refresh it merely to silence a new
 failure; link the change to the ticket that explains why the behavior is now

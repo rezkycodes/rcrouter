@@ -441,6 +441,13 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
     value: upstreamModel,
     enumerable: false
   });
+  // Keep the canonical prompt available to direct-route callers and replay
+  // diagnostics without putting the unsupported top-level field on the wire.
+  Object.defineProperty(payload, "systemPrompt", {
+    value: systemPrompt,
+    enumerable: false,
+    configurable: true
+  });
 
   return payload;
 }

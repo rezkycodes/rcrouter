@@ -11,6 +11,7 @@ const { BOOTSTRAP_URL, CHAT_URL, generateFingerprint, MIMO_SYSTEM_MARKER } = __t
 
 const CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const liveTest = process.env.RUN_LIVE_TESTS === "1" ? it : it.skip;
 
 async function bootstrapWith(ua) {
   const headers = { "Content-Type": "application/json" };
@@ -44,7 +45,7 @@ async function chatWith(jwt, ua) {
 }
 
 describe("MiMo Free bootstrap (live)", () => {
-  it("bootstrap returns 200 with JWT", async () => {
+  liveTest("bootstrap returns 200 with JWT", async () => {
     const { status, jwt } = await bootstrapWith(CHROME_UA);
     expect(status).toBe(200);
     expect(jwt).toBeTruthy();
@@ -52,7 +53,7 @@ describe("MiMo Free bootstrap (live)", () => {
 });
 
 describe("MiMo Free anti-abuse gate (live)", () => {
-  it("chat WITH Chrome User-Agent → 200", async () => {
+  liveTest("chat WITH Chrome User-Agent → 200", async () => {
     const { jwt } = await bootstrapWith(CHROME_UA);
     const r = await chatWith(jwt, CHROME_UA);
     expect(r.status).toBe(200);

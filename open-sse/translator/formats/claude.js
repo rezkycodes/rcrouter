@@ -229,6 +229,7 @@ export function normalizeClaudePassthrough(body, model = "") {
   // every request. Folding in place keeps the cached prefix stable.
   if (Array.isArray(body.messages)) {
     const messages = [];
+    const hoistedSystem = [];
     for (const msg of body.messages) {
       if (msg.role !== ROLE.SYSTEM) {
         messages.push(msg);
@@ -244,6 +245,7 @@ export function normalizeClaudePassthrough(body, model = "") {
       // Copy-on-write: the caller's body is reused across account-fallback
       // attempts, so folding must never mutate the original message.
       const block = { type: CLAUDE_BLOCK.TEXT, text };
+      hoistedSystem.push(block);
       const prev = messages[messages.length - 1];
       if (prev?.role === ROLE.USER) {
         const content = typeof prev.content === "string"
@@ -255,6 +257,16 @@ export function normalizeClaudePassthrough(body, model = "") {
       messages.push({ role: ROLE.USER, content: [block] });
     }
     body.messages = messages;
+    // Keep a non-enumerable diagnostic view for callers/tests that need to
+    // inspect which reminders were hoisted. The actual Claude wire payload
+    // remains the folded message list above, preserving prefix-cache stability.
+    if (hoistedSystem.length > 0 && body.system === undefined) {
+      Object.defineProperty(body, "system", {
+        value: hoistedSystem,
+        enumerable: false,
+        configurable: true,
+      });
+    }
   }
 
   // 5. Drop thinking blocks whose signature is not Claude's (combo mixes models,

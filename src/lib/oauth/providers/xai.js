@@ -4,9 +4,12 @@ import { validateXaiOAuthEndpoint, decodeXaiIdTokenEmail } from "../providerHelp
 
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
+let cachedXaiDiscoveryFetch = null;
 
 async function discoverXaiEndpoints() {
-  if (cachedXaiDiscovery) return cachedXaiDiscovery;
+  // A test/runtime may replace fetch (for example a proxy bootstrap). Do not
+  // reuse a discovery result produced by a different transport instance.
+  if (cachedXaiDiscovery && cachedXaiDiscoveryFetch === globalThis.fetch) return cachedXaiDiscovery;
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, { headers: { Accept: "application/json" } });
     if (res.ok) {
@@ -15,10 +18,12 @@ async function discoverXaiEndpoints() {
         authorizeUrl: validateXaiOAuthEndpoint(data.authorization_endpoint, "authorization_endpoint"),
         tokenUrl: validateXaiOAuthEndpoint(data.token_endpoint, "token_endpoint"),
       };
+      cachedXaiDiscoveryFetch = globalThis.fetch;
       return cachedXaiDiscovery;
     }
   } catch { /* fall through to static fallback */ }
   cachedXaiDiscovery = { authorizeUrl: XAI_CONFIG.authorizeUrl, tokenUrl: XAI_CONFIG.tokenUrl };
+  cachedXaiDiscoveryFetch = globalThis.fetch;
   return cachedXaiDiscovery;
 }
 

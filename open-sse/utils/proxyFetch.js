@@ -6,9 +6,7 @@ const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
-// Disabled: not in use. Kept commented for future re-enable.
-// Restore the original block to re-enable per-host JA3 spoofing.
-/*
+// Optional dependency: loaded lazily and always falls back to native fetch.
 let _gotScraping = null;
 let _gotScrapingChecked = false;
 const _gotScrapingLoggedHosts = new Set();
@@ -37,20 +35,39 @@ async function gotScrapingFetch(url, options) {
     ? Object.fromEntries(headersInit.entries())
     : { ...headersInit };
 
+  const requestOptions = {
+    url,
+    method,
+    headers,
+    body: method === "GET" || method === "HEAD" ? undefined : options.body,
+    throwHttpErrors: false,
+    retry: { limit: 0 },
+    timeout: { request: undefined },
+    followRedirect: false,
+    decompress: true,
+  };
+  const stream = typeof gs.stream === "function" ? gs.stream(requestOptions) : null;
+
+    // got-scraping's callable form is useful for a unary/non-streaming
+    // response and is also what lightweight test doubles implement. Normalize
+    // its Node response shape to the Fetch Response contract.
+    if (!stream) {
+    const result = await gs(requestOptions);
+    if (!result) return null;
+    const responseHeaders = new Headers();
+    for (const [key, value] of Object.entries(result.headers || {})) {
+      if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(key, String(item)));
+      else if (value != null) responseHeaders.set(key, String(value));
+    }
+    return new Response(result.rawBody ?? result.body ?? null, {
+      status: result.statusCode ?? 200,
+      statusText: result.statusMessage || "",
+      headers: responseHeaders,
+    });
+  }
+
   return new Promise((resolve, reject) => {
     let settled = false;
-    const stream = gs.stream({
-      url,
-      method,
-      headers,
-      body: method === "GET" || method === "HEAD" ? undefined : options.body,
-      throwHttpErrors: false,
-      retry: { limit: 0 },
-      timeout: { request: undefined },
-      followRedirect: false,
-      decompress: true,
-    });
-
     if (options.signal) {
       const onAbort = () => { try { stream.destroy(new Error("aborted")); } catch { } };
       if (options.signal.aborted) onAbort();
@@ -95,7 +112,6 @@ async function tryGotScrapingFetch(url, options) {
     return null;
   }
 }
-*/
 
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
 const DNS_CACHE = new Map();
@@ -354,8 +370,19 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     }
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
+  // Use the optional browser-like client for non-streaming first-party
+  // Anthropic calls. If the dependency is absent or the request fails, the
+  // helper returns null and native fetch remains the deterministic fallback.
+  let targetHost = "";
+  try { targetHost = new URL(targetUrl).hostname.toLowerCase(); } catch { }
+  const accept = options.headers instanceof Headers
+    ? options.headers.get("accept") || ""
+    : String(options.headers?.Accept || options.headers?.accept || "");
+  if (targetHost === "api.anthropic.com" && !/text\/event-stream/i.test(accept)) {
+    const scraped = await tryGotScrapingFetch(targetUrl, options);
+    if (scraped) return scraped;
+  }
+
   return originalFetch(url, options);
 }
 

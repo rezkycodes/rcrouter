@@ -340,6 +340,13 @@ export function claudeToKiroRequest(model, body, stream, credentials) {
     value: upstreamModel,
     enumerable: false,
   });
+  // Expose the canonical prompt to direct-route callers and replay diagnostics
+  // without serializing the unsupported top-level field to CodeWhisperer.
+  Object.defineProperty(payload, "systemPrompt", {
+    value: systemPrompt,
+    enumerable: false,
+    configurable: true,
+  });
 
   return payload;
 }
