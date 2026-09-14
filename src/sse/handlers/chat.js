@@ -402,6 +402,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
 
+  // Lock order is deliberate: breaker gate -> provider mutex (inside
+  // getProviderCredentials) -> account semaphore -> upstream request. The
+  // semaphore is released before account/breaker state is updated, so no
+  // fallback path ever waits while holding a lower-level lock.
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
       preferredConnectionId: options?.preferredConnectionId,

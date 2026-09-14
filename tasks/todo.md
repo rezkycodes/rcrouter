@@ -23,7 +23,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 - [x] Add safely invalidated connection caching and measure repository-read reduction.
 - [x] Add account semaphore capacity, cancellation-safe slot release, and queue metrics.
-- [ ] Verify lock ordering with the existing provider mutex and breaker.
+- [x] Verify lock ordering with the existing provider mutex and breaker (4 static ordering regressions; breaker → selection → semaphore → release).
 - [x] Implement a validated Auto Combo candidate resolver.
 - [x] Replace `auto/fallback` with a typed no-eligible-target outcome.
 - [x] Cover ACL, quota, breaker, and capacity eligibility in table-driven tests.
@@ -34,7 +34,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (Common-path and executor slices landed; six bounded-loss cases remain explicitly tracked.)
 - [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
 - [ ] Threat-model credential storage and approve key management before any encryption migration.
-- [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy validation + Auto Combo ACL + request-details/security redaction suites).
+- [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy + request logger header redaction + Auto Combo ACL + request-details/security suites).
 - [x] Make LoopGuard behavior explicit and test valid tool/multimodal traffic (configurable setting; 8 focused regressions).
 
 ## Release readiness

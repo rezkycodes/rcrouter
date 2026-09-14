@@ -21,7 +21,7 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 | --- | --- | --- |
 | Core | Current 9router ancestry; OpenAI-compatible proxy pipeline | Upstream synchronization policy and project-owned Git remote are not defined |
 | Access control | Provider, combo, and model ACL checks | Need regression coverage for every route and bypass boundary |
-| Resilience | Circuit breaker keyed by provider and proxy; 429 is not counted as provider failure; per-provider selection mutex; invalidated connection cache; account semaphore | Cross-process cache invalidation is intentionally not promised; lock-order regression coverage remains |
+| Resilience | Circuit breaker keyed by provider and proxy; 429 is not counted as provider failure; per-provider selection mutex; invalidated connection cache; account semaphore | Cross-process cache invalidation is intentionally not promised; lock order is covered by focused regressions |
 | Settings | 5-second in-process cache with invalidation on internal update | No documented cross-process consistency strategy |
 | Context Relay | Six strategy labels, a 30-minute bounded in-memory target map, and account-aware descriptors | Cross-process persistence is intentionally not promised; restart loses affinity |
 | Auto Combo | Manual combo definitions and four heuristic variants | Candidates lack a central capability, health, quota, ACL, and cost-aware resolver; fallback can produce a non-routable placeholder |

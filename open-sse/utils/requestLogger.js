@@ -69,26 +69,33 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
-// Mask sensitive data in headers (DISABLED - keep full token for testing)
+// Headers are written to local diagnostic files when request logging is enabled.
+// Keep schemes (Bearer/Basic/Token) useful for debugging, but never persist the
+// credential, session identifier, or cookie value itself.
+const SENSITIVE_HEADER_PATTERN = /authorization|api[-_]?key|cookie|token|secret|password|credential|session(?:[-_]?id)?/i;
+
 function maskSensitiveHeaders(headers) {
-  if (!headers) return {};
-  return { ...headers };
-  
-  // Old masking code (disabled):
-  // const masked = { ...headers };
-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
-  // 
-  // for (const key of Object.keys(masked)) {
-  //   const lowerKey = key.toLowerCase();
-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-  //     const value = masked[key];
-  //     if (value && value.length > 20) {
-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
-  //     }
-  //   }
-  // }
-  // return masked;
+  if (!headers || typeof headers !== "object") return {};
+  const source = typeof headers.entries === "function"
+    ? Object.fromEntries(headers.entries())
+    : headers;
+  const masked = { ...source };
+  for (const key of Object.keys(masked)) {
+    if (!SENSITIVE_HEADER_PATTERN.test(key)) continue;
+    const value = masked[key];
+    if (typeof value !== "string" || !value) {
+      masked[key] = "<redacted>";
+      continue;
+    }
+    const scheme = value.trim().split(/\s+/, 1)[0];
+    masked[key] = scheme && scheme.toLowerCase() !== value.trim().toLowerCase()
+      ? `${scheme} <redacted>`
+      : "<redacted>";
+  }
+  return masked;
 }
+
+export const __test__ = { maskSensitiveHeaders };
 
 // No-op logger when logging is disabled
 function createNoOpLogger() {
@@ -170,7 +177,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         timestamp: new Date().toISOString(),
         status,
         statusText,
-        headers: headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {},
+        headers: maskSensitiveHeaders(headers),
         body
       });
     },
