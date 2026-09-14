@@ -13,6 +13,8 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 - The first protocol-fidelity slice is complete (`08c5211f`); the compatibility matrix documents six bounded-loss cases, with nameless Responses calls and Claude tool-result images now resolved (`11e04fa6`). Cursor AgentService protobuf, CommandCode NDJSON, and Kiro EventStream executor coverage now pass as focused suites.
 - Proxy/relay endpoints now fail closed on unsupported schemes and control characters; existing ACL and request-detail redaction suites remain part of the focused security gate.
 - LoopGuard is now configurable (enabled by default), uses recursive argument normalization, skips multimodal/tool turns in text-loop detection, and has focused wiring/false-positive regressions.
+- The operations runbook now documents breaker/quota/account/semaphore/cache/affinity handling, privacy boundaries, and release rollback expectations. Database export/import now accepts only machine-bound CLI tokens or verified dashboard passwords.
+- Credential storage is documented as plaintext-at-rest with an explicit master-key decision checklist; application-level encryption remains deferred until that operational key lifecycle is approved.
 - Verification on 2026-09-14: `pnpm check` passed against the reviewed baseline (60 current failures vs 101 baseline, 41 resolved; lint 134 vs 136), and `pnpm run build` completed successfully.
 
 ## Verified starting point

@@ -33,14 +33,14 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [x] Publish the translator compatibility matrix from current expected failures (`docs/protocol-compatibility.md`).
 - [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (Common-path and executor slices landed; six bounded-loss cases remain explicitly tracked.)
 - [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
-- [ ] Threat-model credential storage and approve key management before any encryption migration.
+- [ ] Threat-model credential storage and approve key management before any encryption migration (threat model documented; master-key lifecycle approval still pending).
 - [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy + request logger header redaction + Auto Combo ACL + request-details/security suites).
 - [x] Make LoopGuard behavior explicit and test valid tool/multimodal traffic (configurable setting; 8 focused regressions).
 
 ## Release readiness
 
 - [ ] Add metrics, dashboard queries, and privacy-safe correlation identifiers.
-- [ ] Write operator runbooks for breaker, quota, account, cache, and affinity incidents.
+- [x] Write operator runbooks for breaker, quota, account, cache, and affinity incidents (`docs/operations-runbook.md`).
 - [ ] Update README claims only after benchmark/test evidence exists.
 - [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
 - [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator and production build pass; container/migration drills remain.)

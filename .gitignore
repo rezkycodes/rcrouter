@@ -53,6 +53,8 @@ source/*
 docs/*
 !docs/ARCHITECTURE.md
 !docs/protocol-compatibility.md
+!docs/operations-runbook.md
+!docs/security-credential-threat-model.md
 !docs/agents/
 !docs/agents/**
 test/*

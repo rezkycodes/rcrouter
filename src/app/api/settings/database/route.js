@@ -2,14 +2,9 @@ import { NextResponse } from "next/server";
 import { exportDb, getSettings, importDb } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
+import { isValidCliToken } from "@/lib/auth/routeAuth";
 
-const CLI_TOKEN_HEADERS = ["x-rc-cli-token", "x-9r-cli-token"];
 const PASSWORD_HEADERS = ["x-rc-password", "x-9r-password"];
-
-// CLI token requests are already trusted (local machine); skip password re-auth.
-function isCliRequest(request) {
-  return CLI_TOKEN_HEADERS.some((h) => Boolean(request.headers.get(h)));
-}
 
 function getPasswordHeader(request) {
   for (const h of PASSWORD_HEADERS) {
@@ -21,7 +16,7 @@ function getPasswordHeader(request) {
 
 export async function GET(request) {
   try {
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(getPasswordHeader(request)))) {
+    if (!(await isValidCliToken(request)) && !(await verifyDashboardPassword(getPasswordHeader(request)))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     const payload = await exportDb();
@@ -35,7 +30,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const { password, ...payload } = await request.json();
-    if (!isCliRequest(request) && !(await verifyDashboardPassword(password))) {
+    if (!(await isValidCliToken(request)) && !(await verifyDashboardPassword(password))) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
     await importDb(payload);
