@@ -27,11 +27,19 @@ const SPECIALIZED = new Set([
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = typeof v === "string"
-      ? v.replace(/Bearer .+/, "Bearer <TOK>")
-          .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
-          .replace(/kimi-\d{10,}/g, "kimi-<TS>")
-      : v;
+    if (typeof v !== "string") {
+      out[k] = v;
+      continue;
+    }
+
+    let value = v
+      .replace(/Bearer .+/, "Bearer <TOK>")
+      .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
+      .replace(/kimi-\d{10,}/g, "kimi-<TS>");
+    // Runtime identity is intentionally not part of the golden contract.
+    if (k.toLowerCase() === "x-platform-version") value = "v<NODE>";
+    if (k.toLowerCase() === "x-msh-device-name") value = "<HOST>";
+    out[k] = value;
   }
   return out;
 }
