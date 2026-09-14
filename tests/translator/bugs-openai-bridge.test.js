@@ -9,9 +9,8 @@ const T = (src, tgt, body, provider = null) =>
   translateRequest(src, tgt, "m", body, true, null, provider);
 
 describe("bug: Claude → OpenAI bridge data loss", () => {
-  // claude-to-openai.js:133-141 — image source.type==="url" only handles base64
-  // KNOWN BUG: it.fails passes while app drops the url; flips to failing once fixed.
-  it.fails("image with source.type=url is preserved (NOT dropped)", () => {
+  // claude-to-openai.js — preserve remote image URLs as OpenAI image_url blocks.
+  it("image with source.type=url is preserved (NOT dropped)", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [{ role: "user", content: [
         { type: "text", text: "look" },
@@ -35,9 +34,8 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
     expect(json, "thinking content lost via OpenAI bridge").toContain("secret reasoning");
   });
 
-  // claude-to-openai.js:155-173 — tool_result image block dropped (text only)
-  // KNOWN BUG
-  it.fails("tool_result with image block is not turned into raw JSON / dropped", () => {
+  // claude-to-openai.js — preserve multimodal tool-result content.
+  it("tool_result with image block is not turned into raw JSON / dropped", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [
@@ -51,13 +49,12 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
       ],
     });
     const toolMsg = out.messages.find((m) => m.role === "tool");
-    // Should keep the image; currently stringifies the whole array into raw JSON
-    expect(toolMsg?.content, "image in tool_result lost").not.toMatch(/^\[/);
+    expect(Array.isArray(toolMsg?.content), "image in tool_result lost").toBe(true);
+    expect(JSON.stringify(toolMsg?.content)).toContain("ZZZ");
   });
 
-  // claude-to-openai.js:155-173 — is_error lost
-  // KNOWN BUG
-  it.fails("tool_result is_error flag is preserved", () => {
+  // claude-to-openai.js — preserve tool-result failure state.
+  it("tool_result is_error flag is preserved", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "f", input: {} }] },
@@ -66,8 +63,7 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
         ] },
       ],
     });
-    const json = JSON.stringify(out);
-    expect(json, "is_error dropped → model can't see tool failure").toContain("is_error");
+    expect(out.messages.find((m) => m.role === "tool")?.is_error).toBe(true);
   });
 
   // claude-to-openai.js:24-27 — system array only takes .text, drops cache_control/non-text

@@ -10,11 +10,10 @@ const T = (body) =>
   translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "m", body, true, null, "anthropic-compatible-x");
 
 describe("OpenAI → Claude context mapping", () => {
-  // openai-to-claude.js:124-134 — always injects CLAUDE_SYSTEM_PROMPT ("You are Claude Code")
-  // KNOWN BUG: pollutes requests for non-official Claude-compatible providers
-  it.fails("does not inject Claude Code system prompt for compatible providers", () => {
+  // openai-to-claude.js — vendor-specific system markers stay on native Claude.
+  it("does not inject Claude Code system prompt for compatible providers", () => {
     const out = T({ messages: [{ role: "user", content: "hi" }] });
-    expect(JSON.stringify(out.system), "Claude Code prompt injected").not.toContain("Claude Code");
+    expect(JSON.stringify(out.system || []), "Claude Code prompt injected").not.toContain("Claude Code");
   });
 
   it("assistant reasoning_content becomes a thinking block", () => {
@@ -33,15 +32,14 @@ describe("OpenAI → Claude context mapping", () => {
     }));
   });
 
-  // openai-to-claude.js:298 — tool_choice "none" mapped to {type:"auto"} (loses "do not call" intent)
-  // KNOWN BUG
-  it.fails("tool_choice=none is not turned into auto", () => {
+  // openai-to-claude.js — preserve OpenAI's explicit "do not call tools" intent.
+  it("tool_choice=none is preserved as none", () => {
     const out = T({
       messages: [{ role: "user", content: "hi" }],
       tools: [{ type: "function", function: { name: "f", parameters: { type: "object", properties: {} } } }],
       tool_choice: "none",
     });
-    expect(out.tool_choice?.type, "none became auto → model may call tools").not.toBe("auto");
+    expect(out.tool_choice?.type).toBe("none");
   });
 
   // getContentBlocksFromMessage — no input_audio branch → audio dropped

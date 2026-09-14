@@ -55,7 +55,11 @@ function toContentBlocks(content) {
 function safeParseJson(s) {
   if (s == null) return {};
   if (typeof s !== "string") return s;
-  try { return JSON.parse(s); } catch { return {}; }
+  try { return JSON.parse(s); } catch {
+    // Preserve malformed arguments for the upstream instead of silently
+    // turning a tool call into an empty object.
+    return { __raw_arguments: s };
+  }
 }
 
 function convertMessages(messages = []) {

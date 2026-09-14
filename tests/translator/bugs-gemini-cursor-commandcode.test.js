@@ -9,9 +9,8 @@ const O2C = (body) => translateRequest(FORMATS.OPENAI, FORMATS.CURSOR, "m", body
 const O2CC = (body) => translateRequest(FORMATS.OPENAI, FORMATS.COMMANDCODE, "m", body, true, null, "commandcode");
 
 describe("OpenAI → Gemini", () => {
-  // openai-to-gemini.js:92-96 — each system message overwrites systemInstruction → only last kept
-  // KNOWN BUG
-  it.fails("multiple system messages are all kept", () => {
+  // openai-to-gemini.js — aggregate system messages into one instruction.
+  it("multiple system messages are all kept", () => {
     const out = O2G({
       messages: [
         { role: "system", content: "RULE_ONE" },
@@ -36,18 +35,16 @@ describe("OpenAI → Cursor", () => {
     expect(JSON.stringify(out), "image dropped").toContain("AAAA");
   });
 
-  // openai-to-cursor.js:179 — max_tokens hardcoded to 32000
-  // KNOWN BUG
-  it.fails("respects client max_tokens", () => {
+  // openai-to-cursor.js — respect an explicitly requested output limit.
+  it("respects client max_tokens", () => {
     const out = O2C({ max_tokens: 200, messages: [{ role: "user", content: "hi" }] });
     expect(out.max_tokens).toBe(200);
   });
 });
 
 describe("OpenAI → CommandCode", () => {
-  // openai-to-commandcode.js:53-57 — safeParseJson returns {} on bad JSON (args silently lost)
-  // KNOWN BUG
-  it.fails("malformed tool arguments are not silently emptied", () => {
+  // openai-to-commandcode.js — retain malformed arguments for diagnostics.
+  it("malformed tool arguments are not silently emptied", () => {
     const out = O2CC({
       messages: [
         { role: "user", content: "go" },

@@ -86,13 +86,13 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
-      result = directFn(model, result, stream, credentials);
+      result = directFn(model, result, stream, credentials, provider);
     } else {
       // Step 1: source -> openai (if source is not openai)
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
         if (toOpenAI) {
-          result = toOpenAI(model, result, stream, credentials);
+          result = toOpenAI(model, result, stream, credentials, provider);
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -102,7 +102,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
       if (targetFormat !== FORMATS.OPENAI) {
         const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
         if (fromOpenAI) {
-          result = fromOpenAI(model, result, stream, credentials);
+          result = fromOpenAI(model, result, stream, credentials, provider);
         }
       }
     }

@@ -44,6 +44,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     generationConfig: {},
     safetySettings: DEFAULT_SAFETY_SETTINGS
   };
+  const systemParts = [];
 
   // Generation config
   if (body.temperature !== undefined) {
@@ -91,10 +92,8 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       const content = msg.content;
 
       if (role === ROLE.SYSTEM && body.messages.length > 1) {
-        result.systemInstruction = {
-          role: GEMINI_ROLE.USER,
-          parts: [{ text: typeof content === "string" ? content : extractTextContent(content) }]
-        };
+        const text = typeof content === "string" ? content : extractTextContent(content);
+        if (text) systemParts.push({ text });
       } else if (role === ROLE.USER || (role === ROLE.SYSTEM && body.messages.length === 1)) {
         const parts = convertOpenAIContentToParts(content);
         if (parts.length > 0) {
@@ -196,6 +195,10 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         }
       }
     }
+  }
+
+  if (systemParts.length > 0) {
+    result.systemInstruction = { role: GEMINI_ROLE.USER, parts: systemParts };
   }
 
   // Convert tools

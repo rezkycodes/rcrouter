@@ -13,7 +13,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
 // Convert OpenAI request to Claude format
-export function openaiToClaudeRequest(model, body, stream) {
+export function openaiToClaudeRequest(model, body, stream, credentials = null, provider = null) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
   // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
@@ -129,17 +129,22 @@ Respond ONLY with the JSON object, no other text.`);
     }
   }
 
-  // System with Claude Code prompt and cache_control
+  // Official Claude OAuth benefits from the Claude Code system marker. Do not
+  // inject it into arbitrary Anthropic-compatible providers: they may reject
+  // vendor-specific instructions or treat them as user content.
   const claudeCodePrompt = { type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT };
+  const includeClaudeCodePrompt = !provider || provider === "claude";
 
-  if (systemParts.length > 0) {
+  if (includeClaudeCodePrompt && systemParts.length > 0) {
     const systemText = systemParts.join("\n");
     result.system = [
       claudeCodePrompt,
       { type: CLAUDE_BLOCK.TEXT, text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } }
     ];
-  } else {
+  } else if (includeClaudeCodePrompt) {
     result.system = [claudeCodePrompt];
+  } else if (systemParts.length > 0) {
+    result.system = [{ type: CLAUDE_BLOCK.TEXT, text: systemParts.join("\n") }];
   }
 
   // Tools - convert from OpenAI format to Claude format with prefix for OAuth
@@ -253,6 +258,12 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     }
   } else if (msg.role === ROLE.ASSISTANT) {
+    // Preserve vendor reasoning fields when the source uses the OpenAI
+    // assistant-message shape. This runs before visible content so Claude
+    // receives a valid thinking → text block sequence.
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content) {
+      blocks.push({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
+    }
     if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
         if (part.type === OPENAI_BLOCK.TEXT && part.text) {
@@ -304,7 +315,8 @@ function convertOpenAIToolChoice(choice) {
   // OpenAI string forms: "auto" | "none" | "required"
   if (typeof choice === "string") {
     if (choice === "required") return { type: "any" };
-    return { type: "auto" }; // "auto", "none", or anything unexpected
+    if (choice === "none") return { type: "none" };
+    return { type: "auto" }; // "auto" or anything unexpected
   }
 
   if (typeof choice === "object") {
@@ -380,4 +392,3 @@ export { openaiToClaudeRequestForAntigravity };
 
 // Register
 register(FORMATS.OPENAI, FORMATS.CLAUDE, openaiToClaudeRequest, null);
-

@@ -182,6 +182,11 @@ function convertClaudeMessage(msg) {
                 url: encodeDataUri(block.source.media_type, block.source.data)
               }
             });
+          } else if (block.source?.type === "url" && typeof block.source.url === "string") {
+            parts.push({
+              type: OPENAI_BLOCK.IMAGE_URL,
+              image_url: { url: block.source.url }
+            });
           }
           break;
 
@@ -197,22 +202,12 @@ function convertClaudeMessage(msg) {
           break;
 
         case CLAUDE_BLOCK.TOOL_RESULT:
-          let resultContent = "";
-          if (typeof block.content === "string") {
-            resultContent = block.content;
-          } else if (Array.isArray(block.content)) {
-            resultContent = block.content
-              .filter(c => c.type === CLAUDE_BLOCK.TEXT)
-              .map(c => c.text)
-              .join("\n") || JSON.stringify(block.content);
-          } else if (block.content) {
-            resultContent = JSON.stringify(block.content);
-          }
-          
+          const resultContent = convertToolResultContent(block.content);
           toolResults.push({
             role: ROLE.TOOL,
             tool_call_id: block.tool_use_id,
-            content: resultContent
+            content: resultContent,
+            ...(block.is_error === true && { is_error: true })
           });
           break;
       }
@@ -251,6 +246,31 @@ function convertClaudeMessage(msg) {
   }
 
   return null;
+}
+
+function convertToolResultContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return content ? JSON.stringify(content) : "";
+
+  const blocks = [];
+  for (const block of content) {
+    if (block?.type === CLAUDE_BLOCK.TEXT && typeof block.text === "string") {
+      blocks.push({ type: OPENAI_BLOCK.TEXT, text: block.text });
+      continue;
+    }
+    if (block?.type === CLAUDE_BLOCK.IMAGE) {
+      const source = block.source;
+      if (source?.type === "base64") {
+        blocks.push({
+          type: OPENAI_BLOCK.IMAGE_URL,
+          image_url: { url: encodeDataUri(source.media_type, source.data) },
+        });
+      } else if (source?.type === "url" && typeof source.url === "string") {
+        blocks.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: source.url } });
+      }
+    }
+  }
+  return blocks.length > 0 ? blocks : "";
 }
 
 // Convert tool choice
