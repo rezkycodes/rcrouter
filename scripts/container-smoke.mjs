@@ -1,42 +1,52 @@
 #!/usr/bin/env node
 
 // Build and boot the published container with an ephemeral /app/data mount,
-// then verify the public liveness endpoint. Local machines without Docker
-// report an explicit skip; CI is strict so publication cannot bypass the drill.
+// then verify the public liveness endpoint. Local machines without Docker or
+// Podman report an explicit skip; CI is strict so publication cannot bypass
+// the drill.
 import { spawnSync } from "node:child_process";
 
 const cwd = new URL("..", import.meta.url);
 const image = `rcrouter-smoke:${process.pid}-${Date.now().toString(36)}`;
 const container = `rcrouter-smoke-${process.pid}`;
-const dockerArgs = (args, options = {}) => spawnSync("docker", args, { cwd, ...options });
+const engines = ["docker", "podman"];
+let engine = null;
+for (const candidate of engines) {
+  const ready = spawnSync(candidate, ["info"], { cwd, stdio: "ignore" });
+  if (!ready.error && ready.status === 0) {
+    engine = candidate;
+    break;
+  }
+}
+const containerArgs = (args, options = {}) => spawnSync(engine || engines[0], args, { cwd, ...options });
 
-const dockerReady = dockerArgs(["info"], { stdio: "ignore" });
-if (dockerReady.error || dockerReady.status !== 0) {
-  const reason = dockerReady.error?.message || "Docker daemon is unavailable";
+if (!engine) {
+  const reason = "Docker/Podman container engine is unavailable";
   if (process.env.CI === "true" || process.env.REQUIRE_DOCKER_SMOKE === "1") {
-    console.error(`[release:container-smoke] Docker required but unavailable: ${reason}`);
+    console.error(`[release:container-smoke] Container engine required but unavailable: ${reason}`);
     process.exit(1);
   }
   console.warn(`[release:container-smoke] SKIP: ${reason}`);
   process.exit(0);
 }
+console.log(`[release:container-smoke] using ${engine}`);
 
 let started = false;
 const cleanup = () => {
-  if (started) dockerArgs(["rm", "--force", container], { stdio: "ignore" });
+  if (started) containerArgs(["rm", "--force", container], { stdio: "ignore" });
   if (process.env.KEEP_RELEASE_SMOKE_IMAGE !== "1") {
-    dockerArgs(["rmi", "--force", image], { stdio: "ignore" });
+    containerArgs(["rmi", "--force", image], { stdio: "ignore" });
   }
 };
 process.once("exit", cleanup);
 
-const build = dockerArgs(["build", "--pull=false", "--tag", image, "."], { stdio: "inherit" });
+const build = containerArgs(["build", "--pull=false", "--tag", image, "."], { stdio: "inherit" });
 if (build.status !== 0) {
-  console.error("[release:container-smoke] Docker build failed");
+  console.error(`[release:container-smoke] ${engine} build failed`);
   process.exit(build.status ?? 1);
 }
 
-const run = dockerArgs([
+const run = containerArgs([
   "run", "--detach", "--name", container,
   "--tmpfs", "/app/data:rw,size=64m",
   "--env", "NODE_ENV=production",
@@ -46,12 +56,12 @@ const run = dockerArgs([
   image,
 ], { encoding: "utf8" });
 if (run.status !== 0) {
-  console.error(`[release:container-smoke] Docker run failed:\n${run.stderr || ""}`);
+  console.error(`[release:container-smoke] ${engine} run failed:\n${run.stderr || ""}`);
   process.exit(run.status ?? 1);
 }
 started = true;
 
-const port = dockerArgs(["port", container, "20128/tcp"], { encoding: "utf8" });
+const port = containerArgs(["port", container, "20128/tcp"], { encoding: "utf8" });
 const portMatch = String(port.stdout || "").match(/:(\d+)\s*$/m);
 if (port.status !== 0 || !portMatch) {
   console.error(`[release:container-smoke] unable to resolve mapped port:\n${port.stderr || port.stdout || ""}`);
@@ -77,6 +87,6 @@ while (Date.now() < deadline) {
 }
 
 console.error(`[release:container-smoke] health check timed out: ${lastError}`);
-const logs = dockerArgs(["logs", "--tail", "120", container], { encoding: "utf8" });
+const logs = containerArgs(["logs", "--tail", "120", container], { encoding: "utf8" });
 if (logs.stdout || logs.stderr) console.error(`${logs.stdout || ""}${logs.stderr || ""}`);
 process.exit(1);

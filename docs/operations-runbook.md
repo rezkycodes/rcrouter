@@ -122,10 +122,11 @@ schema backup, restores that copy, and verifies the critical settings row after
 restart. It never reads the operator's configured `DATA_DIR`.
 
 `release:container-smoke` builds the Dockerfile, starts the image with an
-ephemeral `/app/data` mount, and polls `GET /api/health`. On a developer
-machine without a Docker daemon it reports `SKIP`; CI sets `CI=true`, where a
-missing daemon or a failed health check is a release failure. The publish
-workflow runs this job before an image can be pushed.
+ephemeral `/app/data` mount, and polls `GET /api/health`. It uses Docker or
+Podman when available. On a developer machine without either engine it
+reports `SKIP`; CI sets `CI=true`, where a missing engine or a failed health
+check is a release failure. The publish workflow runs this job before an image
+can be pushed.
 
 The build script creates a pre-build SQLite backup under
 `~/.rcrouter/db/backups/`. Keep the backup for the release window. To roll back
