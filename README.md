@@ -16,7 +16,7 @@
 ## 🌟 Key Highlights & Why RcRouter?
 
 Standard AI routers often suffer from three major shortcomings when driving long-running coding agents:
-1. **Broken Prompt Caching:** Naive round-robin switches accounts between turns, destroying upstream prompt caches (e.g., Anthropic Claude, Google Gemini, DeepSeek) and causing massive cost and latency penalties.
+1. **Broken Prompt Caching:** Naive round-robin can switch accounts between turns, causing upstream prompt-cache misses and avoidable cost or latency.
 2. **Missing Access Control:** Anyone with an API key can access every connected model and provider without restrictions.
 3. **Agentic Loops & Degeneration:** Reasoning models (like Kimi K2.6/K2.7) frequently enter degenerate overthinking loops or leak unparsed raw markup into client outputs.
 
@@ -24,10 +24,10 @@ Standard AI routers often suffer from three major shortcomings when driving long
 - ✅ **Context-Relay (Cache-Aware Routing):** Reuses the same eligible upstream account across successful turns when a session ID is supplied, improving the chance of upstream prompt-cache hits.
 - ✅ **Upstream v0.5.75 Core:** Fully aligned with the latest official 9router core (1M context window auto-compact, 4-marker Claude cache budget caps, Kiro protocol updates).
 - ✅ **Granular Tri-State ACL:** Per-API-key restrictions across service kinds, providers, combos, and specific models (`null` = permit all, `[]` = deny all, array = whitelist).
-- ✅ **High-Throughput TPS Caching:** 5-second setting cache and 2-second connection cache with per-provider mutexes, eliminating synchronous SQLite read bottlenecks.
+- ✅ **Bounded read caching:** 5-second settings and 2-second connection caches, with explicit invalidation on mutation, reduce repeated SQLite reads within a process.
 - ✅ **Account Capacity Guard:** Per-connection concurrency caps (default 3) with FIFO queueing and cancellation-safe slot release; configure `maxConcurrency` in a connection's provider-specific settings.
 - ✅ **In-Memory Circuit Breaker:** Keyed per `provider:proxyHash` that automatically isolates failing upstreams while excluding HTTP 429 rate limits.
-- ✅ **Token Savers (Ponytail + Caveman + RTK):** Injects senior-developer YAGNI rules (Lite, Full, Ultra) and terse formatting into system prompts, cutting output tokens by 20–40%.
+- ✅ **Token Savers (Ponytail + Caveman + RTK):** Injects senior-developer YAGNI rules (Lite, Full, Ultra) and terse formatting into system prompts; output reduction depends on the prompt and provider.
 - ✅ **Anti-Loop Hardening:** Built-in `LoopGuard` terminates repetitive planning loops and converts Kimi-native `<|tool_calls_section_begin|>` into standard OpenAI `tool_calls`.
 - ✅ **Seamless Auto-Migration:** Automatically migrates configurations and accounts from `~/.9router` to `~/.rcrouter` on initial startup without manual setup.
 
@@ -37,8 +37,8 @@ Standard AI routers often suffer from three major shortcomings when driving long
 
 ### The Problem: Why Traditional Round-Robin Destroys Coding Sessions
 Modern LLMs (Anthropic Claude 3.5/3.7, Google Gemini 2.5/3, DeepSeek V3) feature **Prompt Caching**. When large contexts (50k–150k tokens of repository code) are re-sent in multi-turn conversations:
-- **Cache Hit:** Token costs drop by up to **90%** (e.g., $0.30/1M instead of $3.00/1M), and time-to-first-token drops by 60–75%.
-- **Cache Miss:** You pay full price for the entire context and wait significantly longer on every single turn.
+- **Cache Hit:** A provider may discount cached input and return it faster according to its own cache policy.
+- **Cache Miss:** The provider may bill and process the full context again; the exact impact depends on provider pricing and workload.
 
 In naive routers with round-robin or random rotation:
 ```
