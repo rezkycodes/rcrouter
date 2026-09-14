@@ -398,8 +398,11 @@ describe("DevinCliExecutor ACP session/new", () => {
   });
 
   it("does not set XDG_CONFIG_HOME when DEVIN_MCP_SERVERS is absent", async () => {
+    const inheritedXdgConfigHome = process.env.XDG_CONFIG_HOME;
     const { child } = await runExecute();
-    expect(child.opts.env.XDG_CONFIG_HOME).toBeUndefined();
+    // The executor inherits the parent environment. Assert that it does not
+    // override an existing runner value, rather than assuming it is unset.
+    expect(child.opts.env.XDG_CONFIG_HOME).toBe(inheritedXdgConfigHome);
   });
 
   it("exposes body.tools as an MCP server (sets XDG_CONFIG_HOME + writes script)", async () => {
