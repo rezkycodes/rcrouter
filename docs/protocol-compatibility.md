@@ -15,7 +15,7 @@ quality check look green.
 | C-03 | OpenAI → Cursor | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | Cursor’s current request adapter is text/protobuf-oriented. Add a fixture only after the executor schema accepts image bytes or a remote reference. |
 | C-04 | OpenAI → CommandCode | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | `/alpha/generate` currently exposes text/tool blocks only. Preserve the image through a verified upstream field before promoting this case. |
 | C-05 | OpenAI Responses → OpenAI Chat | `tests/translator/bugs-codexCli-responses.test.js` — `input_image.file_id` | Bounded loss | Resolve file IDs through an authenticated file service before translation; a bare file ID is not a valid `image_url`. |
-| C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Bounded loss | Preserve encrypted thinking only when the target has a corresponding continuity field; otherwise expose an explicit privacy-safe diagnostic. |
+| C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Resolved | Emits a privacy-safe diagnostic because OpenAI Chat has no encrypted-reasoning continuity field; the opaque payload is never forwarded. |
 
 “Bounded loss” means the translator deliberately avoids inventing a wire
 representation. The request remains valid, but the unsupported block is not
@@ -34,6 +34,8 @@ The following high-frequency losses now have passing regression coverage:
   malformed CommandCode tool arguments.
 - Nameless Responses function calls no longer emit an invalid
   `tool_calls: []` assistant message.
+- Claude `redacted_thinking` blocks now produce an explicit privacy-safe
+  diagnostic instead of being silently dropped or forwarding the opaque blob.
 
 Run the focused inventory with:
 

@@ -139,7 +139,7 @@ orphaned during the rename.
 
 ## Known release blockers
 
-- Six translator pairs remain intentionally bounded-loss cases in
+- Five translator pairs remain intentionally bounded-loss cases in
   [the compatibility matrix](protocol-compatibility.md).
 - Credential encryption/key rotation remains pending an approved operational
   master-key lifecycle.

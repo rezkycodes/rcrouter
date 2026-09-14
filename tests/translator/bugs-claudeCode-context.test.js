@@ -1,6 +1,7 @@
 // Real Claude Code CLI requests (Claude format) → non-Claude provider via OpenAI bridge.
 // Focuses on context components a real CLI sends: system arrays w/ cache_control, thinking
-// signatures, tool_result with images, audio. KNOWN BUG = it.fails (source file:line in comments).
+// signatures, tool_result with images, audio. Unsupported modalities remain
+// explicit expected failures until a destination wire format exists.
 import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
@@ -39,9 +40,8 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(JSON.stringify(out)).toContain("step-by-step plan");
   });
 
-  // claude-to-openai.js:128 — redacted_thinking also dropped
-  // KNOWN BUG
-  it.fails("redacted_thinking block is not silently dropped", () => {
+  // claude-to-openai.js — encrypted thinking has no OpenAI Chat continuity field.
+  it("redacted_thinking becomes a privacy-safe diagnostic", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [
@@ -51,7 +51,9 @@ describe("Claude Code CLI context → OpenAI", () => {
         { role: "user", content: "go" },
       ],
     });
-    expect(JSON.stringify(out)).toContain("ENCRYPTED_BLOB");
+    const json = JSON.stringify(out);
+    expect(json).toContain("redacted thinking omitted");
+    expect(json).not.toContain("ENCRYPTED_BLOB");
   });
 
   // claude-to-openai.js:155-173 — tool_result images remain OpenAI multimodal

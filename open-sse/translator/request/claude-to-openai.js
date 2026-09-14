@@ -10,6 +10,11 @@ function stripAnthropicBillingHeader(text) {
   return text.replace(/^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i, "");
 }
 
+// OpenAI Chat has no continuity field for Anthropic's encrypted reasoning.
+// Keep the turn intelligible without forwarding the opaque payload upstream.
+const REDACTED_THINKING_DIAGNOSTIC =
+  "[redacted thinking omitted: destination does not support encrypted reasoning]";
+
 // Convert Claude request to OpenAI format
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
@@ -209,6 +214,13 @@ function convertClaudeMessage(msg) {
             content: resultContent,
             ...(block.is_error === true && { is_error: true })
           });
+          break;
+
+        case CLAUDE_BLOCK.REDACTED_THINKING:
+          // There is no safe OpenAI Chat representation for encrypted thinking.
+          // Preserve an explicit diagnostic rather than leaking or inventing a
+          // provider-specific continuity field.
+          parts.push({ type: OPENAI_BLOCK.TEXT, text: REDACTED_THINKING_DIAGNOSTIC });
           break;
       }
     }
