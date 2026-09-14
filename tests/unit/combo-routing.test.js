@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { commitContextRelayAffinity, getRotatedModels, handleComboChat, orderTargetsByContextRelay, resetComboRotation, resetContextRelay } from "../../open-sse/services/combo.js";
+import { makeDescriptor } from "../../open-sse/services/targetDescriptor.js";
 
 describe("combo round-robin routing", () => {
   beforeEach(() => {
@@ -56,6 +57,27 @@ describe("combo round-robin routing", () => {
 
     expect(getRotatedModels(models, "code-xhigh", "fallback", 2)).toEqual(models);
     expect(getRotatedModels(models, "code-xhigh", "fallback", 2)).toEqual(models);
+  });
+
+  it("carries an explicit TargetDescriptor account pin into the leaf handler", async () => {
+    const handleSingleModel = vi.fn(async (_body, model, options) => {
+      expect(model).toBe("provider/model-a");
+      expect(options?.preferredConnectionId).toBe("account-a");
+      return new Response("ok");
+    });
+
+    const response = await handleComboChat({
+      body: { messages: [] },
+      models: [makeDescriptor("provider/model-a", "account-a")],
+      comboStrategy: "fallback",
+      autoSwitch: false,
+      timeoutMs: 0,
+      log: { info: vi.fn(), warn: vi.fn() },
+      handleSingleModel,
+    });
+
+    expect(response.ok).toBe(true);
+    expect(handleSingleModel).toHaveBeenCalledTimes(1);
   });
 
   it("isolates Context Relay affinity by tenant without logging raw session IDs", () => {

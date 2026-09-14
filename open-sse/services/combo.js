@@ -9,6 +9,7 @@ import { getCircuitBreaker, STATE } from "../utils/circuitBreaker.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { createHash } from "node:crypto";
+import { descriptorConnectionId, descriptorKey, makeDescriptor } from "./targetDescriptor.js";
 
 // Strip "combo/" prefix from model string (e.g. "combo/coding-stack" → "coding-stack")
 export function stripComboPrefix(modelStr) {
@@ -77,7 +78,7 @@ export function reorderByCapabilities(models, required) {
   const soft = [...required].filter((c) => !HARD_CAPS.has(c));
 
   const tierOf = (m) => {
-    const rawStr = typeof m === "string" ? m : (m?.model || m?.modelStr || "");
+    const rawStr = descriptorKey(m);
     const slash = typeof rawStr === "string" ? rawStr.indexOf("/") : -1;
     const provider = slash > 0 ? rawStr.slice(0, slash) : "";
     const model = slash > 0 ? rawStr.slice(slash + 1) : rawStr;
@@ -316,7 +317,7 @@ const activeRequestsMap = new Map();
  * @returns {number}
  */
 export function getActiveRequests(target) {
-  const key = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const key = descriptorKey(target);
   return activeRequestsMap.get(key) || 0;
 }
 
@@ -325,7 +326,7 @@ export function getActiveRequests(target) {
  * @param {string|object} target
  */
 export function trackActiveRequestStart(target) {
-  const key = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const key = descriptorKey(target);
   if (!key) return;
   activeRequestsMap.set(key, (activeRequestsMap.get(key) || 0) + 1);
 }
@@ -335,7 +336,7 @@ export function trackActiveRequestStart(target) {
  * @param {string|object} target
  */
 export function trackActiveRequestEnd(target) {
-  const key = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const key = descriptorKey(target);
   if (!key) return;
   const current = activeRequestsMap.get(key) || 0;
   if (current <= 1) {
@@ -360,7 +361,7 @@ export function resetActiveRequests() {
  * @returns {number}
  */
 export function getTargetLoad(target, options = {}) {
-  const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const modelStr = descriptorKey(target);
   const provider = modelStr.split("/")[0] || "";
 
   // 1. In-flight active request count
@@ -454,7 +455,13 @@ export function commitContextRelayAffinity(sessionKey, connectionId, targetKey) 
   const now = Date.now();
   // ponytail: an in-process binding is enough until cross-process affinity is required.
   sessionContextMap.delete(sessionKey);
-  sessionContextMap.set(sessionKey, { targetKey, connectionId, anchoredAt: now, lastSeenAt: now });
+  sessionContextMap.set(sessionKey, {
+    descriptor: makeDescriptor(targetKey, connectionId),
+    targetKey,
+    connectionId,
+    anchoredAt: now,
+    lastSeenAt: now,
+  });
   while (sessionContextMap.size > SESSION_CONTEXT_MAX_ENTRIES) {
     sessionContextMap.delete(sessionContextMap.keys().next().value);
   }
@@ -499,7 +506,7 @@ export function orderTargetsByContextRelay(targets, options = {}) {
 
   const isHealthy = (target) => {
     try {
-      const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+      const modelStr = descriptorKey(target);
       const slashIdx = modelStr.indexOf("/");
       const provider = slashIdx !== -1 ? modelStr.slice(0, slashIdx) : modelStr;
       const targetBreaker = getCircuitBreaker(modelStr, {});
@@ -511,7 +518,7 @@ export function orderTargetsByContextRelay(targets, options = {}) {
       return true;
     }
   };
-  const getTargetKey = (t) => (typeof t === "string" ? t : (t?.model || t?.modelStr || ""));
+  const getTargetKey = (t) => descriptorKey(t);
 
   let targetIndex = -1;
   if (existing) {
@@ -637,7 +644,7 @@ function isTargetQuotaExhausted(target, provider) {
   }
 
   // Check registry by model or provider
-  const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const modelStr = descriptorKey(target);
   const modelInfo = quotaResetRegistry.get(modelStr);
   if (modelInfo && typeof modelInfo === "object") {
     if (modelInfo.limitReached === true || modelInfo.remaining === 0) return true;
@@ -682,7 +689,7 @@ async function resolveEarliestResetMs(target, provider, options = {}) {
   check(target);
 
   // 2. Registry entry for model or provider
-  const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+  const modelStr = descriptorKey(target);
   check(quotaResetRegistry.get(modelStr));
   check(quotaResetRegistry.get(provider));
 
@@ -735,7 +742,7 @@ export async function orderTargetsByResetAware(targets, options = {}) {
 
   const scoredTargets = await Promise.all(
     targets.map(async (target, index) => {
-      const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+      const modelStr = descriptorKey(target);
       const provider = modelStr.split("/")[0] || "";
 
       const exhausted = isTargetQuotaExhausted(target, provider);
@@ -776,7 +783,7 @@ export async function orderTargetsByResetAware(targets, options = {}) {
 
   if (options?.log?.info) {
     const first = scoredTargets[0];
-    const firstStr = typeof first?.target === "string" ? first.target : (first?.target?.model || first?.target?.modelStr);
+    const firstStr = descriptorKey(first?.target);
     const timeDesc = first?.msUntilReset !== Infinity ? `${Math.round(first.msUntilReset / 3600000)}h` : "unknown";
     options.log.info("COMBO", `Reset-Aware selected ${firstStr} (tier: ${first?.tier}, resets in: ${timeDesc})`);
   }
@@ -862,7 +869,8 @@ export async function handleComboChat({
 
   for (let i = 0; i < rotatedModels.length; i++) {
     const target = rotatedModels[i];
-    const modelStr = typeof target === "string" ? target : (target?.model || target?.modelStr || "");
+    const modelStr = descriptorKey(target);
+    const targetConnectionId = descriptorConnectionId(target);
 
     // Per-target timeout overrides combo-level timeout if specified
     const effectiveTimeoutMs = (typeof target === "object" && Number.isFinite(target?.targetTimeoutMs))
@@ -882,6 +890,7 @@ export async function handleComboChat({
 
     const addAffinityOptions = (targetOptions, targetSignal) => {
       if (i === 0 && _preferredConnectionId && modelStr === _preferredTargetKey) targetOptions.preferredConnectionId = _preferredConnectionId;
+      else if (targetConnectionId) targetOptions.preferredConnectionId = targetConnectionId;
       if (!_affinityKey) return;
       targetOptions._affinityKey = _affinityKey;
       targetOptions._invalidateAffinity = (...args) => {
