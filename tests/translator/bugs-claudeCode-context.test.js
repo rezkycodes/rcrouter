@@ -56,6 +56,18 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(json).not.toContain("ENCRYPTED_BLOB");
   });
 
+  // OpenAI Chat has no encrypted-reasoning continuity field, so semantic
+  // preservation remains an explicit bounded-loss case.
+  it.fails("redacted_thinking payload is preserved for a continuity-capable target", () => {
+    const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
+      messages: [
+        { role: "assistant", content: [{ type: "redacted_thinking", data: "ENCRYPTED_BLOB" }] },
+        { role: "user", content: "go" },
+      ],
+    });
+    expect(JSON.stringify(out)).toContain("ENCRYPTED_BLOB");
+  });
+
   // claude-to-openai.js:155-173 — tool_result images remain OpenAI multimodal
   // content blocks rather than being stringified into raw JSON.
   it("tool_result image block is preserved", () => {

@@ -25,6 +25,9 @@ import {
   normalizeKiroToolSpecs,
 } from "../concerns/kiroConversation.js";
 
+const REMOTE_IMAGE_DIAGNOSTIC =
+  "[image omitted: Kiro requires inline image data]";
+
 /**
  * Safely parse JSON string, returning fallback on failure.
  */
@@ -121,8 +124,10 @@ function convertMessages(messages, model) {
               const format = parsed.mimeType.split("/")[1] || parsed.mimeType;
               pendingImages.push({ format, source: { bytes: parsed.base64 } });
             } else if (url.startsWith("http://") || url.startsWith("https://")) {
-              // Kiro only supports base64 — fallback to URL text
-              textParts.push(`[Image: ${url}]`);
+              // Kiro only supports base64. The chat handler prefetches remote
+              // images when possible; keep direct translation explicit and do
+              // not echo a potentially sensitive URL into the prompt.
+              textParts.push(REMOTE_IMAGE_DIAGNOSTIC);
             }
           } else if (c.type === CLAUDE_BLOCK.IMAGE) {
             // Claude format: source.type = "base64", source.media_type, source.data

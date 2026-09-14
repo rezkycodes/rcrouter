@@ -126,7 +126,7 @@ describe("openaiToKiroRequest", () => {
       expect(currentMsg.userInputMessage.images).toHaveLength(1);
     });
 
-    it("should treat http image URLs as text fallback (Kiro only supports base64)", () => {
+    it("should treat http image URLs as an explicit safe fallback (Kiro only supports base64)", () => {
       const body = {
         messages: [
           {
@@ -144,7 +144,8 @@ describe("openaiToKiroRequest", () => {
       const currentMsg = result.conversationState.currentMessage;
       // HTTP URLs are not supported by Kiro — converted to text placeholder
       expect(currentMsg.userInputMessage.images).toBeUndefined();
-      expect(currentMsg.userInputMessage.content).toContain("[Image: https://example.com/photo.jpg]");
+      expect(currentMsg.userInputMessage.content).toContain("[image omitted: Kiro requires inline image data]");
+      expect(currentMsg.userInputMessage.content).not.toContain("https://example.com/photo.jpg");
     });
   });
 

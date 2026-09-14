@@ -42,7 +42,7 @@ describe("OpenAI → Claude context mapping", () => {
     expect(out.tool_choice?.type).toBe("none");
   });
 
-  // getContentBlocksFromMessage — Claude has no audio block, so preserve an
+  // getContentBlocksFromMessage — Claude has no audio block, so keep an
   // explicit diagnostic without forwarding the opaque audio payload.
   it("input_audio becomes a privacy-safe diagnostic", () => {
     const out = T({
@@ -54,6 +54,18 @@ describe("OpenAI → Claude context mapping", () => {
     const json = JSON.stringify(out);
     expect(json, "audio loss was silent").toContain("audio omitted");
     expect(json).not.toContain("AUDIO_B64");
+  });
+
+  // Claude still cannot semantically process the original audio until an
+  // audio-capable content adapter exists.
+  it.fails("input_audio content is preserved", () => {
+    const out = T({
+      messages: [{ role: "user", content: [
+        { type: "text", text: "transcribe" },
+        { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } },
+      ] }],
+    });
+    expect(JSON.stringify(out), "audio not semantically preserved").toContain("AUDIO_B64");
   });
 
   // openai-to-claude.js:235-251 — remote http image_url is kept (regression guard)

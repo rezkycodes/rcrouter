@@ -28,18 +28,27 @@ describe("Codex CLI Responses → OpenAI", () => {
     expect(typeof asst.tool_calls[0].function.arguments).toBe("string");
   });
 
-  // openai-responses.js:75-77 — input_image uses file_id as raw url
-  // KNOWN BUG
-  it.fails("input_image with file_id is not used as a raw url", () => {
+  // openai-responses.js — file_id requires an authenticated file service.
+  it("input_image file_id becomes a privacy-safe diagnostic", () => {
     const out = R2O({
       input: [{ type: "message", role: "user", content: [
         { type: "input_image", file_id: "file-abc" },
       ] }],
     });
     const userMsg = out.messages.find((m) => m.role === "user");
-    const img = Array.isArray(userMsg?.content) ? userMsg.content.find((c) => c.type === "image_url") : null;
-    // A bare file_id is not a valid image URL
-    expect(img?.image_url?.url === "file-abc").toBe(false);
+    expect(JSON.stringify(userMsg)).toContain("file reference requires authenticated image resolution");
+    expect(JSON.stringify(userMsg)).not.toContain("file-abc");
+  });
+
+  // The diagnostic is explicit, but the file reference is still not resolved
+  // losslessly until an authenticated file service is available.
+  it.fails("input_image file_id resolves to inline image data", () => {
+    const out = R2O({
+      input: [{ type: "message", role: "user", content: [{ type: "input_image", file_id: "file-abc" }] }],
+    });
+    const userMsg = out.messages.find((m) => m.role === "user");
+    const image = Array.isArray(userMsg?.content) ? userMsg.content.find((c) => c.type === "image_url") : null;
+    expect(image?.image_url?.url).toMatch(/^data:image\//);
   });
 });
 

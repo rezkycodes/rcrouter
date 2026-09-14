@@ -11,15 +11,22 @@ import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
 
+const UNSUPPORTED_IMAGE_DIAGNOSTIC =
+  "[image omitted: Cursor adapter supports text/protobuf blocks only]";
+
 function extractContent(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .filter(part => {
-        if (!part || typeof part !== "object") return false;
-        return part.type === OPENAI_BLOCK.TEXT && typeof part.text === "string";
+      .filter(part => part && typeof part === "object")
+      .map(part => {
+        if (part.type === OPENAI_BLOCK.TEXT && typeof part.text === "string") return part.text;
+        if (part.type === OPENAI_BLOCK.IMAGE_URL || part.type === OPENAI_BLOCK.IMAGE) {
+          return UNSUPPORTED_IMAGE_DIAGNOSTIC;
+        }
+        return "";
       })
-      .map(part => part.text || "")
+      .filter(Boolean)
       .join("");
   }
   return "";
@@ -110,6 +117,10 @@ function convertMessages(messages) {
             if (typeof block.text === "string") {
               parts.push(block.text || "");
             }
+            continue;
+          }
+          if (block.type === OPENAI_BLOCK.IMAGE_URL || block.type === OPENAI_BLOCK.IMAGE) {
+            parts.push(UNSUPPORTED_IMAGE_DIAGNOSTIC);
             continue;
           }
           if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {

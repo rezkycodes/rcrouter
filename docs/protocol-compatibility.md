@@ -10,12 +10,12 @@ quality check look green.
 
 | Case | Source → target | Fixture | Status | Next action |
 | --- | --- | --- | --- | --- |
-| C-01 | OpenAI → Claude | `tests/translator/bugs-toClaude-context.test.js` — `input_audio` | Resolved | Emits a privacy-safe diagnostic because Claude Messages has no audio block; raw audio bytes and URLs are never forwarded. |
-| C-02 | OpenAI → Kiro | `tests/translator/bugs-kiro.test.js` — remote image URL | Bounded loss | Kiro accepts inline image payloads only in this route. Use the existing SSRF-safe prefetch path when enabled; otherwise keep the URL limitation explicit. |
-| C-03 | OpenAI → Cursor | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | Cursor’s current request adapter is text/protobuf-oriented. Add a fixture only after the executor schema accepts image bytes or a remote reference. |
+| C-01 | OpenAI → Claude | `tests/translator/bugs-toClaude-context.test.js` — `input_audio` | Bounded loss | Claude Messages has no audio block. Add an audio-capable adapter or reject the request before translation with a typed unsupported-modality error. |
+| C-02 | OpenAI → Kiro | `tests/translator/bugs-kiro.test.js` — remote image URL | Bounded loss | The direct fallback emits a privacy-safe diagnostic; use SSRF-safe prefetch when enabled and preserve inline image data before promoting this case. |
+| C-03 | OpenAI → Cursor | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | The text/protobuf adapter emits a privacy-safe diagnostic; preserve image bytes or a verified remote reference in the executor schema before promoting this case. |
 | C-04 | OpenAI → CommandCode | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | `/alpha/generate` currently exposes text/tool blocks only. Preserve the image through a verified upstream field before promoting this case. |
-| C-05 | OpenAI Responses → OpenAI Chat | `tests/translator/bugs-codexCli-responses.test.js` — `input_image.file_id` | Bounded loss | Resolve file IDs through an authenticated file service before translation; a bare file ID is not a valid `image_url`. |
-| C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Resolved | Emits a privacy-safe diagnostic because OpenAI Chat has no encrypted-reasoning continuity field; the opaque payload is never forwarded. |
+| C-05 | OpenAI Responses → OpenAI Chat | `tests/translator/bugs-codexCli-responses.test.js` — `input_image.file_id` | Bounded loss | The fallback emits a privacy-safe diagnostic; resolve file IDs through an authenticated file service before translation because a bare ID is not a valid `image_url`. |
+| C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Bounded loss | Emits a privacy-safe diagnostic; semantic preservation needs a target encrypted-reasoning continuity field. |
 
 “Bounded loss” means the translator deliberately avoids inventing a wire
 representation. The request remains valid, but the unsupported block is not
@@ -36,8 +36,13 @@ The following high-frequency losses now have passing regression coverage:
   `tool_calls: []` assistant message.
 - Claude `redacted_thinking` blocks now produce an explicit privacy-safe
   diagnostic instead of being silently dropped or forwarding the opaque blob.
-- OpenAI audio blocks now produce an explicit privacy-safe diagnostic on the
-  Claude route instead of being silently dropped or forwarding raw payloads.
+- Unsupported multimodal blocks now use explicit privacy-safe diagnostics where
+  the destination has no compatible field; semantic-loss fixtures remain
+  expected failures until a lossless schema or typed rejection exists.
+- Kiro remote images use the existing SSRF-safe prefetch path when available;
+  the direct fallback is an explicit marker that does not echo the URL.
+- Cursor image blocks and Responses `file_id` references now emit explicit
+  diagnostics rather than silently dropping data or creating invalid URLs.
 
 Run the focused inventory with:
 

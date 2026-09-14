@@ -23,16 +23,30 @@ describe("OpenAI → Gemini", () => {
 });
 
 describe("OpenAI → Cursor", () => {
-  // openai-to-cursor.js:12-24 — image content fully dropped (text only)
-  // KNOWN BUG
-  it.fails("image content is preserved", () => {
+  // openai-to-cursor.js — Cursor's adapter is text/protobuf-only, so keep an
+  // explicit marker rather than silently dropping the image payload.
+  it("image content becomes a privacy-safe diagnostic", () => {
     const out = O2C({
       messages: [{ role: "user", content: [
         { type: "text", text: "look" },
         { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
       ] }],
     });
-    expect(JSON.stringify(out), "image dropped").toContain("AAAA");
+    const json = JSON.stringify(out);
+    expect(json).toContain("image omitted");
+    expect(json).not.toContain("AAAA");
+  });
+
+  // Keep the semantic-loss fixture until Cursor accepts an image field in its
+  // protobuf request schema.
+  it.fails("image bytes are preserved in the Cursor request", () => {
+    const out = O2C({
+      messages: [{ role: "user", content: [
+        { type: "text", text: "look" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      ] }],
+    });
+    expect(JSON.stringify(out)).toContain("AAAA");
   });
 
   // openai-to-cursor.js — respect an explicitly requested output limit.
@@ -59,15 +73,27 @@ describe("OpenAI → CommandCode", () => {
     expect(Object.keys(call.input).length, "arguments silently dropped to {}").toBeGreaterThan(0);
   });
 
-  // openai-to-commandcode.js:41-42 — image becomes "[image omitted]"
-  // KNOWN BUG
-  it.fails("image content is preserved", () => {
+  // openai-to-commandcode.js — the text-only `/alpha/generate` schema emits
+  // an explicit marker when no image field is available.
+  it("image content becomes an explicit diagnostic", () => {
     const out = O2CC({
       messages: [{ role: "user", content: [
         { type: "text", text: "look" },
         { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
       ] }],
     });
-    expect(JSON.stringify(out), "image omitted").toContain("BBBB");
+    const json = JSON.stringify(out);
+    expect(json).toContain("[image omitted]");
+    expect(json).not.toContain("BBBB");
+  });
+
+  it.fails("image bytes are preserved in the CommandCode request", () => {
+    const out = O2CC({
+      messages: [{ role: "user", content: [
+        { type: "text", text: "look" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
+      ] }],
+    });
+    expect(JSON.stringify(out)).toContain("BBBB");
   });
 });

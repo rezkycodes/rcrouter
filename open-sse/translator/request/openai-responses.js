@@ -15,6 +15,8 @@ import {
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
 const MAX_TOOL_NAME_LEN = 128;
+const FILE_IMAGE_DIAGNOSTIC =
+  "[image omitted: file reference requires authenticated image resolution]";
 
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
@@ -92,7 +94,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
           if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
           if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-            const url = c.image_url || c.file_id || "";
+            if (!c.image_url && c.file_id) {
+              // A Responses file_id is scoped to an authenticated file
+              // service; treating it as an image URL produces an invalid
+              // upstream request. Keep the turn explicit until resolution is
+              // available in the request context.
+              return { type: OPENAI_BLOCK.TEXT, text: FILE_IMAGE_DIAGNOSTIC };
+            }
+            const url = c.image_url || "";
             return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
           }
           return c;

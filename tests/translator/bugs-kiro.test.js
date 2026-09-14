@@ -54,9 +54,9 @@ describe("OpenAI → Kiro", () => {
     expect(out.inferenceConfig?.maxTokens, "client max_tokens ignored").toBe(100);
   });
 
-  // openai-to-kiro.js:132-134 — remote http image becomes "[Image: url]" text (lost)
-  // KNOWN BUG
-  it.fails("remote image url is preserved as an image, not text", () => {
+  // openai-to-kiro.js — direct translation cannot fetch remote images. The
+  // request handler prefetches them when possible; otherwise emit a safe marker.
+  it("remote image fallback is explicit and does not echo the URL", () => {
     const out = O2K({
       messages: [{ role: "user", content: [
         { type: "text", text: "see" },
@@ -64,6 +64,17 @@ describe("OpenAI → Kiro", () => {
       ] }],
     });
     const content = out.conversationState?.currentMessage?.userInputMessage?.content || "";
-    expect(content, "remote image flattened to text").not.toContain("[Image:");
+    expect(content).toContain("image omitted");
+    expect(content).not.toContain("https://x.com/p.png");
+  });
+
+  it.fails("remote image URL resolves to inline image data", () => {
+    const out = O2K({
+      messages: [{ role: "user", content: [
+        { type: "text", text: "see" },
+        { type: "image_url", image_url: { url: "https://x.com/p.png" } },
+      ] }],
+    });
+    expect(out.conversationState?.currentMessage?.userInputMessage?.images).toEqual(expect.any(Array));
   });
 });
