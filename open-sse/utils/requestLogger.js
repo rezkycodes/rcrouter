@@ -72,7 +72,9 @@ function writeJsonFile(sessionPath, filename, data) {
 // Headers are written to local diagnostic files when request logging is enabled.
 // Keep schemes (Bearer/Basic/Token) useful for debugging, but never persist the
 // credential, session identifier, or cookie value itself.
-const SENSITIVE_HEADER_PATTERN = /authorization|api[-_]?key|cookie|token|secret|password|credential|session(?:[-_]?id)?/i;
+const SENSITIVE_HEADER_PATTERN = /authorization|api[-_]?key|cookie|token|secret|password|credential|session(?:[-_]?id)?|conversation[-_]?id|request[-_]?id|user[-_]?id/i;
+const SENSITIVE_BODY_KEY_PATTERN = /authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|(?:^|[-_])token(?:$|[-_])|(?:^|[-_])key(?:$|[-_])|secret|password|cookie|session(?:[-_]?id)?|conversation[-_]?id|prompt[-_]?cache[-_]?key|request[-_]?id|user[-_]?id|(?:^|[-_])user(?:$|[-_])|file[-_]?(?:id|data)?|image[-_]?(?:url|data)?|input[-_]?(?:image|audio|file)|audio[-_]?(?:url|data)?/i;
+const MEDIA_TYPES = new Set(["image_url", "input_image", "input_audio", "audio", "file", "input_file"]);
 
 function maskSensitiveHeaders(headers) {
   if (!headers || typeof headers !== "object") return {};
@@ -96,6 +98,41 @@ function maskSensitiveHeaders(headers) {
 }
 
 export const __test__ = { maskSensitiveHeaders };
+
+function sanitizeLogPayload(value, key = "") {
+  if (SENSITIVE_BODY_KEY_PATTERN.test(key)) return "<redacted>";
+  if (Array.isArray(value)) return value.map((item) => sanitizeLogPayload(item));
+  if (!value || typeof value !== "object") return value;
+  if (typeof value.type === "string" && MEDIA_TYPES.has(value.type)) {
+    return { type: value.type, redacted: true };
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([entryKey, entryValue]) => [
+      entryKey,
+      sanitizeLogPayload(entryValue, entryKey),
+    ]),
+  );
+}
+
+function sanitizeLogUrl(value) {
+  if (typeof value !== "string") return value;
+  try {
+    const parsed = new URL(value);
+    for (const key of parsed.searchParams.keys()) {
+      if (SENSITIVE_BODY_KEY_PATTERN.test(key) || /^(?:key|apiKey)$/i.test(key)) parsed.searchParams.set(key, "<redacted>");
+    }
+    return parsed.toString();
+  } catch {
+    return value.replace(/([?&](?:api[-_]?key|token|access[-_]?token|key|secret)=)[^&]*/gi, "$1<redacted>");
+  }
+}
+
+function sanitizeLogText(value) {
+  if (typeof value !== "string") return value;
+  return value.replace(/\b(Bearer|Basic|Token)\s+[^\s,;]+/gi, "$1 <redacted>");
+}
+
+export const __testPayload__ = { sanitizeLogPayload, sanitizeLogUrl, sanitizeLogText };
 
 // No-op logger when logging is disabled
 function createNoOpLogger() {
@@ -139,7 +176,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         timestamp: new Date().toISOString(),
         endpoint,
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -148,7 +185,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       writeJsonFile(sessionPath, "2_req_source.json", {
         timestamp: new Date().toISOString(),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -156,7 +193,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logOpenAIRequest(body) {
       writeJsonFile(sessionPath, "3_req_openai.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -164,9 +201,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logTargetRequest(url, headers, body) {
       writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
-        url,
+        url: sanitizeLogUrl(url),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -176,9 +213,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
       writeJsonFile(sessionPath, filename, {
         timestamp: new Date().toISOString(),
         status,
-        statusText,
+        statusText: sanitizeLogText(statusText),
         headers: maskSensitiveHeaders(headers),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -208,7 +245,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logConvertedResponse(body) {
       writeJsonFile(sessionPath, "7_res_client.json", {
         timestamp: new Date().toISOString(),
-        body
+        body: sanitizeLogPayload(body)
       });
     },
     
@@ -227,9 +264,9 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logError(error, requestBody = null) {
       writeJsonFile(sessionPath, "6_error.json", {
         timestamp: new Date().toISOString(),
-        error: error?.message || String(error),
-        stack: error?.stack,
-        requestBody
+        error: sanitizeLogText(error?.message || String(error)),
+        stack: sanitizeLogText(error?.stack),
+        requestBody: sanitizeLogPayload(requestBody)
       });
     }
   };
@@ -254,10 +291,10 @@ export function logError(provider, { error, url, model, requestBody }) {
       type: "error",
       provider,
       model,
-      url,
-      error: error?.message || String(error),
-      stack: error?.stack,
-      requestBody
+      url: sanitizeLogUrl(url),
+      error: sanitizeLogText(error?.message || String(error)),
+      stack: sanitizeLogText(error?.stack),
+      requestBody: sanitizeLogPayload(requestBody)
     };
     
     fs.appendFileSync(logPath, JSON.stringify(logEntry) + "\n");

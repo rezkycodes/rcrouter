@@ -198,7 +198,7 @@ Client request
 **Work**
 
 - Threat-model connection fields and confirm whether credentials are encrypted at rest; introduce versioned encryption/key rotation and a migration only if plaintext storage is confirmed and a master-key operational model is approved.
-- Validate proxy endpoints and outbound network policy to limit SSRF-style destinations; retain the existing trusted-peer header stripping model.
+- Validate proxy endpoints and outbound network policy to limit SSRF-style destinations; retain the existing trusted-peer header stripping model. Diagnostic request logs now redact credential/session headers, media payloads, and credential-bearing URLs.
 - Add route-level ACL regression tests, error redaction tests, and audit logging with stable opaque identifiers.
 - Make LoopGuard behavior explicit/configurable and test that it does not silently corrupt valid user/tool traffic.
 
