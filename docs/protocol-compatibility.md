@@ -10,7 +10,7 @@ quality check look green.
 
 | Case | Source → target | Fixture | Status | Next action |
 | --- | --- | --- | --- | --- |
-| C-01 | Claude → OpenAI | `tests/translator/bugs-toClaude-context.test.js` — `input_audio` | Bounded loss | Add an audio-capable OpenAI content adapter, or reject the request before translation with a typed unsupported-modality error. |
+| C-01 | OpenAI → Claude | `tests/translator/bugs-toClaude-context.test.js` — `input_audio` | Resolved | Emits a privacy-safe diagnostic because Claude Messages has no audio block; raw audio bytes and URLs are never forwarded. |
 | C-02 | OpenAI → Kiro | `tests/translator/bugs-kiro.test.js` — remote image URL | Bounded loss | Kiro accepts inline image payloads only in this route. Use the existing SSRF-safe prefetch path when enabled; otherwise keep the URL limitation explicit. |
 | C-03 | OpenAI → Cursor | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | Cursor’s current request adapter is text/protobuf-oriented. Add a fixture only after the executor schema accepts image bytes or a remote reference. |
 | C-04 | OpenAI → CommandCode | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | `/alpha/generate` currently exposes text/tool blocks only. Preserve the image through a verified upstream field before promoting this case. |
@@ -36,6 +36,8 @@ The following high-frequency losses now have passing regression coverage:
   `tool_calls: []` assistant message.
 - Claude `redacted_thinking` blocks now produce an explicit privacy-safe
   diagnostic instead of being silently dropped or forwarding the opaque blob.
+- OpenAI audio blocks now produce an explicit privacy-safe diagnostic on the
+  Claude route instead of being silently dropped or forwarding raw payloads.
 
 Run the focused inventory with:
 

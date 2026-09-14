@@ -11,6 +11,8 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
+const UNSUPPORTED_AUDIO_DIAGNOSTIC =
+  "[audio omitted: destination does not support audio input]";
 
 // Convert OpenAI request to Claude format
 export function openaiToClaudeRequest(model, body, stream, credentials = null, provider = null) {
@@ -244,6 +246,10 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
           }
         } else if (part.type === OPENAI_BLOCK.IMAGE && part.source) {
           blocks.push({ type: CLAUDE_BLOCK.IMAGE, source: part.source });
+        } else if (part.type === OPENAI_BLOCK.INPUT_AUDIO || part.type === OPENAI_BLOCK.AUDIO_URL) {
+          // Claude's Messages API has no audio content block. Keep the
+          // conversation explicit without forwarding raw audio bytes/URLs.
+          blocks.push({ type: CLAUDE_BLOCK.TEXT, text: UNSUPPORTED_AUDIO_DIAGNOSTIC });
         } else if (part.type === OPENAI_BLOCK.FILE && part.file) {
           // OpenAI file block -> Claude document (PDF only; Claude rejects other mimes).
           const fileData = part.file.file_data;

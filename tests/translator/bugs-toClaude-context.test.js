@@ -42,16 +42,18 @@ describe("OpenAI → Claude context mapping", () => {
     expect(out.tool_choice?.type).toBe("none");
   });
 
-  // getContentBlocksFromMessage — no input_audio branch → audio dropped
-  // KNOWN BUG
-  it.fails("input_audio content is preserved", () => {
+  // getContentBlocksFromMessage — Claude has no audio block, so preserve an
+  // explicit diagnostic without forwarding the opaque audio payload.
+  it("input_audio becomes a privacy-safe diagnostic", () => {
     const out = T({
       messages: [{ role: "user", content: [
         { type: "text", text: "transcribe" },
         { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } },
       ] }],
     });
-    expect(JSON.stringify(out), "audio dropped").toContain("AUDIO_B64");
+    const json = JSON.stringify(out);
+    expect(json, "audio loss was silent").toContain("audio omitted");
+    expect(json).not.toContain("AUDIO_B64");
   });
 
   // openai-to-claude.js:235-251 — remote http image_url is kept (regression guard)
