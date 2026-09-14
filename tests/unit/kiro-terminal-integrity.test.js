@@ -710,6 +710,13 @@ describe("Kiro terminal integrity recovery", () => {
       .mockResolvedValueOnce(new Response("unauthorized", {
         status: 401,
         statusText: "Unauthorized"
+      }))
+      // BaseExecutor legitimately probes each Kiro endpoint on 401. Keep the
+      // fallback surfaces deterministic instead of returning undefined after
+      // the two assertions' primary calls.
+      .mockResolvedValue(new Response("unauthorized", {
+        status: 401,
+        statusText: "Unauthorized"
       }));
 
     const result = await execute();
@@ -724,6 +731,10 @@ describe("Kiro terminal integrity recovery", () => {
     fetchMock
       .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(new Response(`error-start-${"x".repeat(10_000)}-error-tail`, {
+        status: 401,
+        statusText: "Unauthorized"
+      }))
+      .mockResolvedValue(new Response(`error-start-${"x".repeat(10_000)}-error-tail`, {
         status: 401,
         statusText: "Unauthorized"
       }));

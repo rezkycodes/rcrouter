@@ -32,7 +32,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 - [x] Publish the translator compatibility matrix from current expected failures (`docs/protocol-compatibility.md`).
 - [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (First common-path slice landed; seven edge cases remain explicitly tracked.)
-- [ ] Add executor-level tests for binary/protobuf/NDJSON paths.
+- [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
 - [ ] Threat-model credential storage and approve key management before any encryption migration.
 - [ ] Validate proxy outbound destinations and add ACL/error-redaction regressions.
 - [ ] Make LoopGuard behavior explicit and test valid tool/multimodal traffic.

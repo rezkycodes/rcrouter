@@ -232,6 +232,134 @@ function concatArrays(...arrays) {
   return result;
 }
 
+// google.protobuf.Value helpers used by Cursor AgentService's MCP messages.
+// Keep these codecs local to the existing protobuf module so the executor and
+// tests share one wire implementation instead of maintaining a JSON sidecar.
+function encodeFixed64Field(fieldNum, value) {
+  const tag = encodeVarint((fieldNum << 3) | WIRE_TYPE.FIXED64);
+  const number = Buffer.allocUnsafe(8);
+  number.writeDoubleLE(Number(value), 0);
+  return concatArrays(tag, new Uint8Array(number));
+}
+
+export function encodeAgentValue(value) {
+  if (value === null || value === undefined) {
+    return encodeField(1, WIRE_TYPE.VARINT, 0); // NullValue.NULL_VALUE
+  }
+  if (typeof value === "boolean") return encodeField(4, WIRE_TYPE.VARINT, value ? 1 : 0);
+  if (typeof value === "number" && Number.isFinite(value)) return encodeFixed64Field(2, value);
+  if (typeof value === "string") return encodeField(3, WIRE_TYPE.LEN, value);
+  if (Array.isArray(value)) {
+    const list = concatArrays(...value.map((entry) => encodeField(1, WIRE_TYPE.LEN, encodeAgentValue(entry))));
+    return encodeField(6, WIRE_TYPE.LEN, list);
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value).map(([key, entry]) => encodeField(
+      1,
+      WIRE_TYPE.LEN,
+      concatArrays(
+        encodeField(1, WIRE_TYPE.LEN, key),
+        encodeField(2, WIRE_TYPE.LEN, encodeAgentValue(entry)),
+      ),
+    ));
+    return encodeField(5, WIRE_TYPE.LEN, concatArrays(...entries));
+  }
+  return encodeField(3, WIRE_TYPE.LEN, String(value));
+}
+
+export function decodeAgentValue(data) {
+  const fields = decodeMessage(data);
+  if (fields.has(1)) return null;
+  if (fields.has(2)) {
+    const bytes = fields.get(2)[0].value;
+    return Buffer.from(bytes).readDoubleLE(0);
+  }
+  if (fields.has(3)) return textDecoder.decode(fields.get(3)[0].value);
+  if (fields.has(4)) return fields.get(4)[0].value !== 0;
+  if (fields.has(5)) {
+    const object = {};
+    const struct = decodeMessage(fields.get(5)[0].value);
+    for (const entry of struct.get(1) || []) {
+      const pair = decodeMessage(entry.value);
+      const key = pair.has(1) ? textDecoder.decode(pair.get(1)[0].value) : "";
+      if (pair.has(2)) object[key] = decodeAgentValue(pair.get(2)[0].value);
+    }
+    return object;
+  }
+  if (fields.has(6)) {
+    const list = decodeMessage(fields.get(6)[0].value);
+    return (list.get(1) || []).map((entry) => decodeAgentValue(entry.value));
+  }
+  return null;
+}
+
+export function encodeMcpToolDefinition(tool = {}) {
+  const fn = tool.function || tool;
+  const name = fn.name || tool.name || "tool";
+  const description = fn.description || tool.description || "";
+  const schema = fn.parameters || fn.input_schema || tool.inputSchema || tool.input_schema || { type: "object" };
+  return concatArrays(
+    encodeField(1, WIRE_TYPE.LEN, name),
+    ...(description ? [encodeField(2, WIRE_TYPE.LEN, description)] : []),
+    encodeField(3, WIRE_TYPE.LEN, encodeAgentValue(schema)),
+    encodeField(4, WIRE_TYPE.LEN, "9router"),
+    encodeField(5, WIRE_TYPE.LEN, name),
+  );
+}
+
+export function encodeMcpTools(tools = []) {
+  if (!Array.isArray(tools) || tools.length === 0) return new Uint8Array();
+  return concatArrays(...tools.map((tool) => encodeField(1, WIRE_TYPE.LEN, encodeMcpToolDefinition(tool))));
+}
+
+export function decodeMcpArgs(data) {
+  const fields = decodeMessage(data);
+  const args = {};
+  for (const entry of fields.get(2) || []) {
+    const pair = decodeMessage(entry.value);
+    const key = pair.has(1) ? textDecoder.decode(pair.get(1)[0].value) : "";
+    if (pair.has(2)) args[key] = decodeAgentValue(pair.get(2)[0].value);
+  }
+  return {
+    name: fields.has(1) ? textDecoder.decode(fields.get(1)[0].value) : "",
+    toolCallId: fields.has(3) ? textDecoder.decode(fields.get(3)[0].value) : "",
+    toolName: fields.has(5) ? textDecoder.decode(fields.get(5)[0].value) : "",
+    args,
+  };
+}
+
+function encodeMcpResultItem(item) {
+  if (item.kind === "image") {
+    const image = concatArrays(
+      encodeField(1, WIRE_TYPE.LEN, item.data || new Uint8Array()),
+      encodeField(2, WIRE_TYPE.LEN, item.mimeType || "image/png"),
+    );
+    return encodeField(1, WIRE_TYPE.LEN, encodeField(2, WIRE_TYPE.LEN, image));
+  }
+  const textContent = encodeField(1, WIRE_TYPE.LEN, item.text || "");
+  return encodeField(1, WIRE_TYPE.LEN, encodeField(1, WIRE_TYPE.LEN, textContent));
+}
+
+export function encodeMcpResultSuccess({ textItems = [], imageItems = [], isError = false } = {}) {
+  const items = [
+    ...textItems.map((text) => ({ kind: "text", text: String(text) })),
+    ...imageItems.map((image) => ({ kind: "image", ...image })),
+  ];
+  const success = concatArrays(
+    ...items.map(encodeMcpResultItem),
+    encodeField(2, WIRE_TYPE.VARINT, isError ? 1 : 0),
+  );
+  return encodeField(1, WIRE_TYPE.LEN, success);
+}
+
+export function encodeMcpResultError(message = "") {
+  return encodeField(2, WIRE_TYPE.LEN, encodeField(1, WIRE_TYPE.LEN, String(message)));
+}
+
+export function encodeMcpResultToolNotFound(name = "") {
+  return encodeField(5, WIRE_TYPE.LEN, encodeField(1, WIRE_TYPE.LEN, String(name)));
+}
+
 // ==================== MESSAGE ENCODING ====================
 
 /**
@@ -892,6 +1020,14 @@ export function extractTextFromResponse(payload) {
 export default {
   encodeVarint,
   encodeField,
+  encodeAgentValue,
+  decodeAgentValue,
+  encodeMcpToolDefinition,
+  encodeMcpTools,
+  decodeMcpArgs,
+  encodeMcpResultSuccess,
+  encodeMcpResultError,
+  encodeMcpResultToolNotFound,
   encodeMessage,
   buildChatRequest,
   wrapConnectRPCFrame,

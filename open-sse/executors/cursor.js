@@ -4,6 +4,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import {
   generateCursorBody,
   encodeField,
+  encodeMcpTools,
   wrapConnectRPCFrame,
   decodeMessage,
   parseConnectRPCFrame,
@@ -95,7 +96,21 @@ function encodeHistoryMessage(message) {
   return agentMessage(1, agentMessage(1, agentMessage(1, text)));
 }
 
-function buildAgentRunFrame(messages, model) {
+// Public predicate used by protocol tests and callers that need to choose the
+// AgentService path without duplicating the text-only validation rules.
+export function isAgentCapableRequest(body) {
+  if (!Array.isArray(body?.messages) || body.messages.length === 0) return false;
+  return body.messages.every((message) => {
+    if (!message || typeof message !== "object") return false;
+    if (message.role === "tool") return typeof message.content === "string" || Array.isArray(message.content);
+    if (message.tool_calls?.length) return true;
+    if (typeof message.content === "string") return true;
+    return Array.isArray(message.content)
+      && message.content.every((part) => part?.type === "text" && typeof part.text === "string");
+  });
+}
+
+export function buildAgentRunFrame(messages, model, tools = []) {
   const system = messages
     .filter((message) => message?.role === "system")
     .map((message) => textFromContent(message.content))
@@ -129,6 +144,7 @@ function buildAgentRunFrame(messages, model) {
     agentMessage(1, new Uint8Array()),
     agentMessage(2, conversationAction),
     ...(system ? [agentString(8, system)] : []),
+    ...(Array.isArray(tools) && tools.length > 0 ? [agentMessage(4, encodeMcpTools(tools))] : []),
     agentMessage(9, requestedModel),
   );
 
