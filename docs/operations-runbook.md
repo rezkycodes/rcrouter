@@ -113,6 +113,8 @@ pnpm check
 pnpm run build
 pnpm run release:migration-drill
 pnpm run release:container-smoke
+# after deploying a pinned image to staging:
+RCROUTER_BASE_URL=https://staging.example pnpm run release:staged-check
 ```
 
 `release:migration-drill` creates an isolated SQLite database, forces a pending
@@ -137,10 +139,18 @@ The canonical release image is published to GHCR as
 keeps the historical `9router-data` volume name so existing SQLite data is not
 orphaned during the rename.
 
+`release:staged-check` observes `/api/health` for a bounded release window
+(60 seconds by default), optionally verifies `RCROUTER_EXPECTED_VERSION`, and
+can probe an authenticated metrics URL with `RCROUTER_METRICS_URL`. It fails
+on any non-200 response, invalid JSON, or unhealthy payload. Use a pinned
+image digest for the deployment and record the probe output with the release
+ticket before widening traffic.
+
 ## Known release blockers
 
-- Six translator limitations remain intentionally bounded-loss cases in
-  [the compatibility matrix](protocol-compatibility.md).
+- Six translator limitations remain intentionally fail-closed cases in
+  [the compatibility matrix](protocol-compatibility.md); unsupported payloads
+  return HTTP 422 with a privacy-safe capability code before upstream dispatch.
 - Credential encryption/key rotation remains pending an approved operational
   master-key lifecycle.
 - Container smoke and migration/rollback drills run in CI before publication.

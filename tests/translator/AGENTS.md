@@ -75,6 +75,12 @@ Only add a dedicated test when a provider has a special format that does not rou
 The semantic-preservation guards currently remain, each paired with an
 explicit diagnostic or safe prefetch regression:
 
+Production chat routing applies `open-sse/translator/compatibility.js` before
+translation and returns HTTP 422 with an allow-listed capability code for
+these cases. The direct translator fixtures stay `it.fails` until a lossless
+target schema is verified; do not change them merely because the runtime now
+fails safely.
+
 | Case | Fixture | Remaining gap |
 |---|---|---|
 | C-01 | `bugs-toClaude-context.test.js` | Claude has no audio content block. |

@@ -30,6 +30,7 @@ import { compressWithPxpipe } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+import { getUnsupportedTranslation } from "../translator/compatibility.js";
 import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 
@@ -218,6 +219,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
+    const unsupported = getUnsupportedTranslation(sourceFormat, targetFormat, body);
+    if (unsupported) {
+      log?.warn?.("MODALITY", `${unsupported.caseId} rejected: ${unsupported.code}`);
+      return createErrorResult(HTTP_STATUS.UNPROCESSABLE_ENTITY, unsupported.message, undefined, unsupported.code);
+    }
     const caps = getCapabilitiesForModel(provider, model);
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${model}`);
@@ -227,6 +233,11 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
       const n = await prefetchRemoteImages(body, sourceFormat, targetFormat, { signal: undefined });
       if (n > 0) log?.debug?.("MODALITY", `prefetched ${n} remote image(s) for ${targetFormat}`);
     } catch (e) { log?.warn?.("MODALITY", `image prefetch failed: ${e.message}`); }
+    const unresolvedRemoteImage = getUnsupportedTranslation(sourceFormat, targetFormat, body, { includeRemoteImages: true });
+    if (unresolvedRemoteImage) {
+      log?.warn?.("MODALITY", `${unresolvedRemoteImage.caseId} rejected: ${unresolvedRemoteImage.code}`);
+      return createErrorResult(HTTP_STATUS.UNPROCESSABLE_ENTITY, unresolvedRemoteImage.message, undefined, unresolvedRemoteImage.code);
+    }
   }
 
   let translatedBody;

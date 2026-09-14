@@ -585,6 +585,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       return result.response;
     }
 
+    // Client capability errors must not poison account health or trigger
+    // fallback: another credential cannot make an unsupported wire shape valid.
+    if (result.status === HTTP_STATUS.UNPROCESSABLE_ENTITY) return result.response;
+
     if (clientSignal?.aborted) {
       log.info("CHAT", `[${provider}/${model}] client disconnected — skipping account lock/fallback`);
       return new Response(null, { status: 499 });

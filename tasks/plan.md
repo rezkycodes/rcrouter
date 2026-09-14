@@ -10,7 +10,7 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 
 - Foundation, project-owned GitHub publication, Context Relay account affinity, connection caching, account-aware descriptors, and account semaphore are implemented and covered by the quality gate.
 - Auto Combo now filters caller-supplied ACL/health/quota state and returns a typed no-candidate result instead of `auto/fallback` (`5a0eee86`).
-- The first protocol-fidelity slice is complete (`08c5211f`); all six bounded-loss cases now have safe prefetch or explicit privacy-safe diagnostics, with semantic-preservation gaps retained as explicit `it.fails` guards. Cursor AgentService protobuf, CommandCode NDJSON, and Kiro EventStream executor coverage now pass as focused suites.
+- The first protocol-fidelity slice is complete (`08c5211f`); all six unsupported cases now fail closed with typed HTTP 422 responses, while semantic-preservation gaps remain explicit `it.fails` guards until lossless schemas exist. Cursor AgentService protobuf, CommandCode NDJSON, and Kiro EventStream executor coverage now pass as focused suites.
 - Proxy/relay endpoints now fail closed on unsupported schemes and control characters; existing ACL and request-detail redaction suites remain part of the focused security gate.
 - LoopGuard is now configurable (enabled by default), uses recursive argument normalization, skips multimodal/tool turns in text-loop detection, and has focused wiring/false-positive regressions.
 - The operations runbook now documents breaker/quota/account/semaphore/cache/affinity handling, privacy boundaries, and release rollback expectations. Database export/import now accepts only machine-bound CLI tokens or verified dashboard passwords.

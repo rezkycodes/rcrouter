@@ -31,7 +31,8 @@ Follow this order. A checkbox is complete only when its verification evidence is
 ## Compatibility and security
 
 - [x] Publish the translator compatibility matrix from current expected failures (`docs/protocol-compatibility.md`).
-- [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (All six bounded-loss cases now have safe prefetch or explicit privacy-safe diagnostics; semantic-preservation fixtures remain explicit `it.fails` guards.)
+- [x] Fail closed on unsupported translator payloads with typed HTTP 422 errors before account health/fallback mutation.
+- [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (All six cases now fail closed at runtime with typed HTTP 422 errors; semantic-preservation fixtures remain explicit `it.fails` guards until lossless schemas exist.)
 - [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
 - [ ] Threat-model credential storage and approve key management before any encryption migration (threat model documented; master-key lifecycle approval still pending).
 - [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy + request logger header redaction + Auto Combo ACL + request-details/security suites).
@@ -43,4 +44,4 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [x] Write operator runbooks for breaker, quota, account, cache, and affinity incidents (`docs/operations-runbook.md`).
 - [x] Update README claims only after benchmark/test evidence exists. (Unmeasured percentage claims were removed; behavior and provider-dependent caveats are stated explicitly.)
 - [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
-- [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator, production build, and isolated migration drill pass; container smoke runs in CI because Docker is unavailable locally, and staged rollout remains an operator action.)
+- [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator, production build, isolated migration drill, and a bounded `release:staged-check` probe are implemented; container smoke runs in CI because Docker is unavailable locally, and the pinned staged deployment remains an operator action.)
