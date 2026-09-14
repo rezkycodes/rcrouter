@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "4524ee1a574f223ab368860d6fe7a354050cc8c3",
-    "indexed_at": "2026-09-14T03:40:23Z",
+    "commit": "802ca88676eeb402b6dfd142cd54cabae93dfd57",
+    "indexed_at": "2026-09-14T03:54:49Z",
     "project": "routerproxy-rcrouter",
-    "nodes": 11948,
-    "edges": 36568,
+    "nodes": 11952,
+    "edges": 36578,
     "original_size": 30736384,
-    "compressed_size": 2584536,
+    "compressed_size": 2590776,
     "compression_level": 9
 }
