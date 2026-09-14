@@ -13,8 +13,29 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const lintErrors = (report) => report.flatMap((file) =>
   file.messages
     .filter((message) => message.severity === 2)
-    .map((message) => `${relative(repoRoot, file.filePath)} :: ${message.ruleId} :: ${message.message}`)
+    .map((message) => `${normalizeLintPath(file.filePath)} :: ${message.ruleId} :: ${message.message}`)
 );
+
+// Baseline reports were captured on a developer workstation and therefore
+// contain absolute paths. Normalize both historical and current reports to
+// repository-relative paths so the comparator remains portable in CI clones.
+const normalizeLintPath = (filePath) => {
+  const normalized = String(filePath).replaceAll("\\\\", "/");
+  const repoRelative = relative(repoRoot, normalized).replaceAll("\\\\", "/");
+  if (!repoRelative.startsWith("../") && repoRelative !== "..") return repoRelative;
+
+  const rootMarkers = [
+    "/bin/", "/cli/", "/cloud/", "/docs/", "/gitbook/", "/open-sse/",
+    "/scripts/", "/skills/", "/src/", "/tests/", "/public/",
+  ];
+  for (const marker of rootMarkers) {
+    const index = normalized.lastIndexOf(marker);
+    if (index !== -1) return normalized.slice(index + 1);
+  }
+
+  const rootFile = normalized.match(/\/[^/]+\/(?:package|server|custom-server|next\.config|middleware|instrumentation)[^/]*$/);
+  return rootFile ? rootFile[0].slice(1) : normalized;
+};
 
 try {
   const lintRun = spawnSync(
