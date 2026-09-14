@@ -10,7 +10,7 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 
 - Foundation, project-owned GitHub publication, Context Relay account affinity, connection caching, and account semaphore are implemented and covered by the quality gate.
 - Auto Combo now filters caller-supplied ACL/health/quota state and returns a typed no-candidate result instead of `auto/fallback` (`5a0eee86`).
-- The first protocol-fidelity slice is complete (`08c5211f`); the full translator backlog still contains seven explicit expected failures.
+- The first protocol-fidelity slice is complete (`08c5211f`); the compatibility matrix documents seven bounded-loss cases, with the nameless Responses-call case now resolved (`9cda1faa` plus follow-up).
 - Verification on 2026-09-14: `pnpm check` passed against the reviewed baseline (98 current failures vs 101 baseline, 3 resolved), and `pnpm run build` completed successfully.
 
 ## Verified starting point

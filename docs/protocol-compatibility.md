@@ -1,0 +1,45 @@
+# Translator protocol compatibility
+
+This matrix is the release-facing inventory for translator cases that are
+still marked `it.fails`. A case stays here until the destination protocol can
+carry the source value without silently changing its meaning. The fixture name
+is the executable source of truth; do not remove an expected failure to make a
+quality check look green.
+
+## Current limitations
+
+| Case | Source → target | Fixture | Status | Next action |
+| --- | --- | --- | --- | --- |
+| C-01 | Claude → OpenAI | `tests/translator/bugs-toClaude-context.test.js` — `input_audio` | Bounded loss | Add an audio-capable OpenAI content adapter, or reject the request before translation with a typed unsupported-modality error. |
+| C-02 | OpenAI → Kiro | `tests/translator/bugs-kiro.test.js` — remote image URL | Bounded loss | Kiro accepts inline image payloads only in this route. Use the existing SSRF-safe prefetch path when enabled; otherwise keep the URL limitation explicit. |
+| C-03 | OpenAI → Cursor | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | Cursor’s current request adapter is text/protobuf-oriented. Add a fixture only after the executor schema accepts image bytes or a remote reference. |
+| C-04 | OpenAI → CommandCode | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | `/alpha/generate` currently exposes text/tool blocks only. Preserve the image through a verified upstream field before promoting this case. |
+| C-05 | OpenAI Responses → OpenAI Chat | `tests/translator/bugs-codexCli-responses.test.js` — `input_image.file_id` | Bounded loss | Resolve file IDs through an authenticated file service before translation; a bare file ID is not a valid `image_url`. |
+| C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Bounded loss | Preserve encrypted thinking only when the target has a corresponding continuity field; otherwise expose an explicit privacy-safe diagnostic. |
+| C-07 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — tool-result image | Bounded loss | Keep multimodal tool output as OpenAI content blocks once downstream tool consumers are covered by a streaming regression. |
+
+“Bounded loss” means the translator deliberately avoids inventing a wire
+representation. The request remains valid, but the unsupported block is not
+claimed to be semantically preserved. These cases must not log raw image data,
+file IDs, or credential material.
+
+## Resolved slices
+
+The following high-frequency losses now have passing regression coverage:
+
+- OpenAI `tool_choice: "none"` and `reasoning_content` → Claude thinking blocks.
+- Claude base64/remote images and multimodal tool results → OpenAI blocks.
+- Multiple OpenAI system messages → one Gemini `systemInstruction`.
+- Explicit Cursor `max_tokens`, Kiro `max_tokens`/`max_output_tokens`, and
+  malformed CommandCode tool arguments.
+- Nameless Responses function calls no longer emit an invalid
+  `tool_calls: []` assistant message.
+
+Run the focused inventory with:
+
+```sh
+rg -n "it\\.fails|KNOWN BUG" tests/translator
+```
+
+The complete quality comparator (`pnpm check`) remains the release gate; the
+expected-failure count is compared with `tests/__baseline__/current.json`.

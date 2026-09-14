@@ -52,6 +52,7 @@ source/*
 .cursor/*
 docs/*
 !docs/ARCHITECTURE.md
+!docs/protocol-compatibility.md
 !docs/agents/
 !docs/agents/**
 test/*

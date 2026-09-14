@@ -8,16 +8,16 @@ const R2O = (body) => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI,
 const O2R = (body) => translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "m", body, true, null, null);
 
 describe("Codex CLI Responses → OpenAI", () => {
-  // openai-responses.js:103 — function_call with empty name skipped, can leave tool_calls: []
-  // KNOWN BUG: empty tool_calls array is rejected by OpenAI/Codex
-  it.fails("assistant has no empty tool_calls array when all names are empty", () => {
+  // openai-responses.js:103 — nameless function_call is skipped without
+  // emitting an invalid Chat Completions assistant shell.
+  it("does not emit an empty tool_calls array when all names are empty", () => {
     const out = R2O({
       input: [
         { type: "function_call", call_id: "c1", name: "", arguments: "{}" },
       ],
     });
-    const asst = out.messages.find((m) => m.role === "assistant" && m.tool_calls);
-    expect(asst?.tool_calls?.length ?? 0, "empty tool_calls[] produced").toBeGreaterThan(0);
+    expect(out.messages.some((m) => m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length === 0),
+      "empty tool_calls[] produced").toBe(false);
   });
 
   it("function_call arguments end up as a string", () => {

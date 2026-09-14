@@ -30,7 +30,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 ## Compatibility and security
 
-- [ ] Publish the translator compatibility matrix from current expected failures.
+- [x] Publish the translator compatibility matrix from current expected failures (`docs/protocol-compatibility.md`).
 - [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (First common-path slice landed; seven edge cases remain explicitly tracked.)
 - [ ] Add executor-level tests for binary/protobuf/NDJSON paths.
 - [ ] Threat-model credential storage and approve key management before any encryption migration.

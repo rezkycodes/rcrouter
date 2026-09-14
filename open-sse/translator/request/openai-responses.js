@@ -69,7 +69,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (itemType === RESPONSES_ITEM.MESSAGE) {
       // Flush any pending assistant message with tool calls
       if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
+        // Nameless Responses function_call items are skipped below. Do not
+        // emit the now-empty assistant shell: Chat Completions rejects
+        // `tool_calls: []` even though the Responses input was syntactically
+        // valid (for example a hosted tool with no public name).
+        if (currentAssistantMsg.tool_calls.length > 0) {
+          result.messages.push(currentAssistantMsg);
+        }
         currentAssistantMsg = null;
       }
       // Flush pending tool results
@@ -129,7 +135,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
-        result.messages.push(currentAssistantMsg);
+        if (currentAssistantMsg.tool_calls.length > 0) {
+          result.messages.push(currentAssistantMsg);
+        }
         currentAssistantMsg = null;
       }
       // Flush any pending tool results first
@@ -164,7 +172,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   }
 
   // Flush remaining
-  if (currentAssistantMsg) {
+  if (currentAssistantMsg && currentAssistantMsg.tool_calls.length > 0) {
     result.messages.push(currentAssistantMsg);
   }
   if (pendingToolResults.length > 0) {
