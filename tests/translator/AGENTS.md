@@ -72,51 +72,16 @@ Only add a dedicated test when a provider has a special format that does not rou
 
 ## 8. Current known bugs (currently `it.fails`)
 
-Grouped per CLI/provider test file. Each row is an `it.fails` case.
+The semantic-preservation guards currently remain, each paired with an
+explicit diagnostic or safe prefetch regression:
 
-**Claude (`bugs-openai-bridge.test.js`, `bugs-claudeCode-context.test.js`)**
-| Bug | Source |
-|---|---|
-| Claude image `source.type="url"` dropped (only base64) | `request/claude-to-openai.js:133-141` |
-| `tool_result` image block → raw JSON | `request/claude-to-openai.js:155-173` |
-| `tool_result.is_error` lost | `request/claude-to-openai.js:155-173` |
-| `thinking` dropped via bridge | `request/claude-to-openai.js:128` |
-
-**OpenAI → Claude (`bugs-toClaude-context.test.js`)**
-| Bug | Source |
-|---|---|
-| Always injects "You are Claude Code" system prompt | `request/openai-to-claude.js:124-134` |
-| `reasoning_content` not mapped to a thinking block | `request/openai-to-claude.js:268-273` |
-| `tool_choice:"none"` → `auto` | `request/openai-to-claude.js:298` |
-| `input_audio` dropped | `request/openai-to-claude.js` (no audio branch) |
-
-**Codex Responses (`bugs-codexCli-responses.test.js`)**
-| Bug | Source |
-|---|---|
-| Empty-name function_call can leave `tool_calls: []` | `request/openai-responses.js:103` |
-| `arguments` not coerced to string | `request/openai-responses.js:109-110` |
-| `input_image` uses `file_id` as raw url | `request/openai-responses.js:75-77` |
-
-**Antigravity (`bugs-antigravity.test.js`)**
-| Bug | Source |
-|---|---|
-| functionResponse + functionCall in same content → tool calls dropped | `request/antigravity-to-openai.js:177-189` |
-| functionCall without id → random unstable id | `request/antigravity-to-openai.js:167` |
-
-**Kiro (`bugs-kiro.test.js`)**
-| Bug | Source |
-|---|---|
-| `JSON.parse(arguments)` throws on bad JSON (no try/catch) | `request/openai-to-kiro.js:214-216` |
-| `max_tokens` hardcoded to 32000 | `request/openai-to-kiro.js:309` |
-| Remote image → `[Image: url]` text | `request/openai-to-kiro.js:132-134` |
-
-**Gemini / Cursor / CommandCode (`bugs-gemini-cursor-commandcode.test.js`)**
-| Bug | Source |
-|---|---|
-| Only the last system message kept | `request/openai-to-gemini.js:92-96` |
-| Cursor drops image content | `request/openai-to-cursor.js:12-24` |
-| Cursor `max_tokens` hardcoded to 32000 | `request/openai-to-cursor.js:179` |
-| CommandCode bad JSON args → `{}` silently | `request/openai-to-commandcode.js:53-57` |
-| CommandCode image → `[image omitted]` | `request/openai-to-commandcode.js:41-42` |
+| Case | Fixture | Remaining gap |
+|---|---|---|
+| C-01 | `bugs-toClaude-context.test.js` | Claude has no audio content block. |
+| C-02 | `bugs-kiro.test.js` | Kiro needs inline image data; direct translation cannot fetch. |
+| C-03 | `bugs-gemini-cursor-commandcode.test.js` | Cursor executor has no verified image field. |
+| C-04 | `bugs-gemini-cursor-commandcode.test.js` | CommandCode `/alpha/generate` exposes text/tool blocks only. |
+| C-05 | `bugs-codexCli-responses.test.js` | Responses `file_id` needs authenticated file resolution. |
+| C-06 | `bugs-claudeCode-context.test.js` | OpenAI Chat has no encrypted-thinking continuity field. |
 
 Fixing a bug → rerun; the matching `it.fails` test turns RED → switch it to a regular `it` and verify correct behavior.
