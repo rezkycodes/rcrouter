@@ -46,3 +46,25 @@ jobs:
         env:
           CI: "true"
         run: node scripts/container-smoke.mjs
+
+  cloud-worker-smoke:
+    name: Cloud Worker bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Worker dependencies
+        working-directory: cloud
+        run: pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
+
+      - name: Wrangler bundle dry-run
+        working-directory: cloud
+        run: ./node_modules/.bin/wrangler deploy --dry-run --config wrangler.toml

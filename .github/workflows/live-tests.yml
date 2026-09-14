@@ -1,0 +1,86 @@
+name: Live provider tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real:
+        description: "Run credentialed tests/translator/real (requires seeded DATA_DIR)"
+        required: false
+        default: false
+        type: boolean
+      run_rtk:
+        description: "Run local RTK E2E (requires seeded DB, API key, and server config)"
+        required: false
+        default: false
+        type: boolean
+      real_providers:
+        description: "Optional comma-separated REAL_PROVIDERS filter"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Opt-in live fixtures
+    runs-on: ubuntu-latest
+    env:
+      # Secrets are only used as an explicit operator-controlled gate. Provider
+      # credentials stay on a protected runner/data directory and are never logged.
+      LIVE_GATE: ${{ secrets.RCROUTER_LIVE_TESTS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Require explicit live-test opt-in
+        id: gate
+        run: |
+          if [ "$LIVE_GATE" != "1" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Live provider lane disabled; set RCROUTER_LIVE_TESTS=1 to opt in."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: MiMo live smoke
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          RUN_LIVE_TESTS: "1"
+        run: pnpm exec vitest run --config tests/vitest.config.js tests/unit/mimo-free.live.test.js
+
+      - name: Credentialed real-provider fixtures
+        if: steps.gate.outputs.enabled == 'true' && inputs.run_real
+        env:
+          RUN_REAL: "1"
+          REAL_PROVIDERS: ${{ inputs.real_providers }}
+        run: pnpm exec vitest run --config tests/vitest.config.js tests/translator/real/
+
+      - name: RTK local E2E fixture
+        if: steps.gate.outputs.enabled == 'true' && inputs.run_rtk
+        env:
+          RUN_E2E: "1"
+          RTK_E2E_KEY: ${{ secrets.RCROUTER_RTK_E2E_KEY }}
+          RTK_E2E_LOG: ${{ runner.temp }}/rcrouter-live.log
+        run: |
+          pnpm dev > "$RTK_E2E_LOG" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:20128/api/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:20128/api/health >/dev/null
+          pnpm exec vitest run --config tests/vitest.config.js tests/unit/rtk.e2e.test.js tests/unit/rtk.multi-provider.e2e.test.js

@@ -1,0 +1,17 @@
+{
+  "name": "rcrouter-cloud",
+  "version": "0.2.13",
+  "private": true,
+  "type": "module",
+  "description": "RcRouter Cloud Worker - Cloudflare edge embeddings proxy",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "open-sse": "file:../open-sse"
+  },
+  "devDependencies": {
+    "wrangler": "^4.131.1"
+  }
+}

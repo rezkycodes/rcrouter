@@ -209,6 +209,7 @@ pnpm lint                              # lint regression gate against reviewed b
 pnpm lint:raw                          # full ESLint output, including known debt
 pnpm check                             # lint + regression gate
 pnpm run build
+pnpm run release:cloud-smoke              # Cloudflare Worker embeddings fixture
 ```
 
 The offline suite is green: all runnable tests pass. `pnpm test` still compares
@@ -216,6 +217,17 @@ against the historical reviewed baseline in `tests/__baseline__/README.md` so
 future regressions remain visible; do not refresh that snapshot merely to hide
 a new failure. Live/real-provider tests remain explicitly gated on credentials
 or `RUN_LIVE_TESTS=1`.
+
+The opt-in provider lane is available from GitHub Actions → **Live provider tests**.
+Set the protected `RCROUTER_LIVE_TESTS=1` repository secret before dispatching it;
+the default quality workflow never contacts external providers. The optional real
+provider and RTK jobs require a runner with a seeded `DATA_DIR`/API key and are
+enabled explicitly through workflow inputs.
+
+The optional Cloudflare Worker slice lives in [`cloud/`](cloud/). It shares the
+`open-sse` core and exposes `/health` plus OpenAI-compatible `/v1/embeddings`.
+`pnpm run release:cloud-smoke` runs its deterministic fixture and is part of
+`pnpm run release:verify`.
 
 Account capacity is process-local. Set a connection's `maxConcurrency` to a
 positive number to cap in-flight upstream requests, or `0`/`null` to bypass

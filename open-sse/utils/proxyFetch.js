@@ -15,7 +15,9 @@ async function getGotScraping() {
   if (_gotScrapingChecked) return _gotScraping;
   _gotScrapingChecked = true;
   try {
-    const mod = await import("got-scraping");
+    // Keep this optional transport out of edge/webpack bundles; native fetch
+    // remains the portable fallback when the runtime cannot load it.
+    const mod = await import(/* webpackIgnore: true */ "got-scraping");
     _gotScraping = typeof mod.gotScraping === "function" ? mod.gotScraping : null;
     if (_gotScraping) dbg("TLS", "got-scraping loaded (browser-like JA3 enabled)");
   } catch (e) {

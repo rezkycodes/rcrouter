@@ -20,9 +20,8 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.claude/**",
       "**/dist/**",
-      // RcRouter is the standalone dashboard/runtime checkout. The optional
-      // Cloudflare Worker tree is not shipped here; run its fixture from the
-      // full upstream checkout when cloud/src/handlers/embeddings.js exists.
+      // Keep the Cloudflare Worker fixture optional for sanitized checkouts,
+      // while running it automatically whenever the worker tree is restored.
       ...(cloudEmbeddingsAvailable ? [] : ["**/embeddings.cloud.test.js"]),
     ],
     // Allow many it.concurrent cases (real provider smoke runs ~50 providers in parallel)
