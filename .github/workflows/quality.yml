@@ -31,3 +31,18 @@ jobs:
 
       - name: Production build
         run: pnpm run build
+
+      - name: Migration and rollback drill
+        run: pnpm run release:migration-drill
+
+  container-smoke:
+    name: Container smoke
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Container liveness smoke
+        env:
+          CI: "true"
+        run: node scripts/container-smoke.mjs

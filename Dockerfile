@@ -9,8 +9,12 @@ FROM base AS builder
 
 RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
 
-COPY package.json ./
-RUN npm install --registry=https://registry.npmmirror.com
+# The repository is pnpm-native. Install the pinned package-manager version so
+# image builds cannot silently resolve a different dependency graph.
+RUN npm install --global pnpm@11.5.2
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -19,7 +23,7 @@ RUN npm run build
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
-LABEL org.opencontainers.image.title="9router"
+LABEL org.opencontainers.image.title="RcRouter"
 
 ENV NODE_ENV=production
 ENV PORT=20128

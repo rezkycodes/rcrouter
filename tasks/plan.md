@@ -224,6 +224,7 @@ Client request
 - Document the single source of truth for configuration, ports, `~/.rcrouter` migration, breakers, cache freshness, account capacity, and affinity restart semantics.
 - Add structured operational metrics/dashboards for routing decision, queue depth, cache behavior, breaker status, affinity lifecycle, translator compatibility, and failure class. The first bounded slice is now available through protected `/api/metrics`; labels are allow-listed and identifiers are opaque.
 - Add runbooks for disabled accounts, quota reset, breaker recovery, leaked semaphore slot investigation, upstream sync, and rollback.
+- Make release checks reproducible with `pnpm run release:migration-drill` (isolated backup/restore) and `pnpm run release:container-smoke` (ephemeral container health probe); CI runs both before publication.
 - Add a concise root `AGENTS.md` after the implementation conventions stabilize, so contributors can locate pipeline, tests, and invariants without relying on README prose.
 
 **Acceptance criteria**

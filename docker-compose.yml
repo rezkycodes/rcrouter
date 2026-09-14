@@ -1,7 +1,8 @@
 services:
-  9router:
-    image: decolua/9router:latest
-    container_name: 9router
+  rcrouter:
+    build: .
+    image: ${RCROUTER_IMAGE:-ghcr.io/rezkycodes/rcrouter:latest}
+    container_name: ${RCROUTER_CONTAINER_NAME:-rcrouter}
     restart: always
     ports:
       - "20128:20128"
@@ -26,5 +27,7 @@ services:
       - "8787:8787"
 
 volumes:
+  # Keep the historical volume name so an upgrade does not orphan existing
+  # SQLite data; the application itself migrates ~/.9router into RcRouter.
   9router-data:
     name: 9router-data

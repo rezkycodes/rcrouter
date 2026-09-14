@@ -111,7 +111,19 @@ Run the quality gate and production build before a staged restart:
 pnpm install --frozen-lockfile
 pnpm check
 pnpm run build
+pnpm run release:migration-drill
+pnpm run release:container-smoke
 ```
+
+`release:migration-drill` creates an isolated SQLite database, forces a pending
+schema backup, restores that copy, and verifies the critical settings row after
+restart. It never reads the operator's configured `DATA_DIR`.
+
+`release:container-smoke` builds the Dockerfile, starts the image with an
+ephemeral `/app/data` mount, and polls `GET /api/health`. On a developer
+machine without a Docker daemon it reports `SKIP`; CI sets `CI=true`, where a
+missing daemon or a failed health check is a release failure. The publish
+workflow runs this job before an image can be pushed.
 
 The build script creates a pre-build SQLite backup under
 `~/.rcrouter/db/backups/`. Keep the backup for the release window. To roll back
@@ -120,11 +132,18 @@ backup only if a migration was part of that release. The current LoopGuard,
 connection cache, semaphore, breaker, and Context Relay state are in-memory and
 will reset on restart.
 
+The canonical release image is published to GHCR as
+`ghcr.io/rezkycodes/rcrouter`; `docker-compose.yml` can build it locally and
+keeps the historical `9router-data` volume name so existing SQLite data is not
+orphaned during the rename.
+
 ## Known release blockers
 
 - Six translator pairs remain intentionally bounded-loss cases in
   [the compatibility matrix](protocol-compatibility.md).
 - Credential encryption/key rotation remains pending an approved operational
   master-key lifecycle.
-- Container smoke, migration/rollback, and staged-release drills must run in
-  the deployment environment before claiming release readiness.
+- Container smoke and migration/rollback drills run in CI before publication.
+  A staged restart still requires an operator to deploy the pinned image
+  digest, verify `/api/health`, and observe error/latency metrics for one
+  release window before widening traffic.

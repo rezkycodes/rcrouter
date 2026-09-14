@@ -1,6 +1,7 @@
 {
   "name": "rcrouter-app",
   "version": "0.5.75",
+  "packageManager": "pnpm@11.5.2",
   "description": "RcRouter web dashboard",
   "bin": {
     "rcrouter": "./bin/rcrouter.js"
@@ -22,6 +23,9 @@
     "lint": "node tests/__baseline__/run-lint-no-regression.mjs",
     "lint:raw": "eslint .",
     "check": "pnpm lint && pnpm test",
+    "release:migration-drill": "node scripts/migration-drill.mjs",
+    "release:container-smoke": "node scripts/container-smoke.mjs",
+    "release:verify": "pnpm check && pnpm run build && pnpm run release:migration-drill && pnpm run release:container-smoke",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
   },

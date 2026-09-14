@@ -43,4 +43,4 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [x] Write operator runbooks for breaker, quota, account, cache, and affinity incidents (`docs/operations-runbook.md`).
 - [ ] Update README claims only after benchmark/test evidence exists.
 - [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
-- [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator and production build pass; container/migration drills remain.)
+- [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator, production build, and isolated migration drill pass; container smoke runs in CI because Docker is unavailable locally, and staged rollout remains an operator action.)
