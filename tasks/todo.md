@@ -32,9 +32,11 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 - [x] Publish the translator compatibility matrix from current expected failures (`docs/protocol-compatibility.md`).
 - [x] Fail closed on unsupported translator payloads with typed HTTP 422 errors before account health/fallback mutation.
-- [ ] Repair protocol cases in focused vertical slices and promote each to a passing regression test. (All six cases now fail closed at runtime with typed HTTP 422 errors; semantic-preservation fixtures remain explicit `it.fails` guards until lossless schemas exist.)
+- [x] Add fail-closed protocol guards for the six bounded-loss cases. (Each case now returns a typed HTTP 422 before upstream dispatch; semantic-preservation fixtures remain explicit `it.fails` guards.)
+- [ ] Repair the six protocol cases in focused vertical slices and promote each semantic fixture to a passing regression test once a lossless destination schema exists.
 - [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
-- [ ] Threat-model credential storage and approve key management before any encryption migration (threat model documented; master-key lifecycle approval still pending).
+- [x] Threat-model credential storage and document the required key-management controls.
+- [ ] Approve and provision the master-key lifecycle before any credential-encryption migration.
 - [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy + request logger header redaction + Auto Combo ACL + request-details/security suites).
 - [x] Make LoopGuard behavior explicit and test valid tool/multimodal traffic (configurable setting; 8 focused regressions).
 
@@ -44,4 +46,5 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [x] Write operator runbooks for breaker, quota, account, cache, and affinity incidents (`docs/operations-runbook.md`).
 - [x] Update README claims only after benchmark/test evidence exists. (Unmeasured percentage claims were removed; behavior and provider-dependent caveats are stated explicitly.)
 - [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
-- [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator, production build, isolated migration drill, bounded `release:staged-check` probe, and Docker/Podman container smoke are implemented; the pinned staged deployment remains an operator action.)
+- [x] Run the full suite, production build, container smoke, migration/rollback drill, and bounded staged-health probe (CI run `34838923519`).
+- [ ] Deploy a pinned image digest to staging and observe one release window before widening traffic.
