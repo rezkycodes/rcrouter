@@ -14,7 +14,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 - [x] Approve the tenant-scoped opaque affinity-key and log-redaction design.
 - [x] Implement bounded TTL/LRU affinity storage with deterministic cleanup.
-- [ ] Replace model-only relay records with internal account-aware `TargetDescriptor` values.
+- [x] Replace model-only relay records with internal account-aware `TargetDescriptor` values (`713c3edf`).
 - [x] Thread `connectionId` to credential selection through the existing preferred-connection path.
 - [x] Commit affinity only after upstream success; invalidate and reselect on account-specific failure.
 - [x] Add tests for tenant isolation, two-account stickiness, expiry, eviction, 429, timeout, disabled account, and recovery.
@@ -42,5 +42,5 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [ ] Add metrics, dashboard queries, and privacy-safe correlation identifiers.
 - [ ] Write operator runbooks for breaker, quota, account, cache, and affinity incidents.
 - [ ] Update README claims only after benchmark/test evidence exists.
-- [ ] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
+- [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.
 - [ ] Run full suite, build, container smoke test, migration/rollback drill, and staged release. (Baseline comparator and production build pass; container/migration drills remain.)

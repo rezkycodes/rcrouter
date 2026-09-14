@@ -8,7 +8,7 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 
 ## Latest implementation status
 
-- Foundation, project-owned GitHub publication, Context Relay account affinity, connection caching, and account semaphore are implemented and covered by the quality gate.
+- Foundation, project-owned GitHub publication, Context Relay account affinity, connection caching, account-aware descriptors, and account semaphore are implemented and covered by the quality gate.
 - Auto Combo now filters caller-supplied ACL/health/quota state and returns a typed no-candidate result instead of `auto/fallback` (`5a0eee86`).
 - The first protocol-fidelity slice is complete (`08c5211f`); the compatibility matrix documents six bounded-loss cases, with nameless Responses calls and Claude tool-result images now resolved (`11e04fa6`).
 - Verification on 2026-09-14: `pnpm check` passed against the reviewed baseline (98 current failures vs 101 baseline, 3 resolved), and `pnpm run build` completed successfully.
@@ -19,9 +19,9 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 | --- | --- | --- |
 | Core | Current 9router ancestry; OpenAI-compatible proxy pipeline | Upstream synchronization policy and project-owned Git remote are not defined |
 | Access control | Provider, combo, and model ACL checks | Need regression coverage for every route and bypass boundary |
-| Resilience | Circuit breaker keyed by provider and proxy; 429 is not counted as provider failure; per-provider selection mutex | No account concurrency semaphore; connection data is fetched per selection instead of through a safely invalidated cache |
+| Resilience | Circuit breaker keyed by provider and proxy; 429 is not counted as provider failure; per-provider selection mutex; invalidated connection cache; account semaphore | Cross-process cache invalidation is intentionally not promised; lock-order regression coverage remains |
 | Settings | 5-second in-process cache with invalidation on internal update | No documented cross-process consistency strategy |
-| Context Relay | Six strategy labels and a 30-minute in-memory target map | The entry records only a model target, not the selected connection/account; it can key from `body.user`, logs raw session material, has no size bound, and can re-anchor before upstream success |
+| Context Relay | Six strategy labels, a 30-minute bounded in-memory target map, and account-aware descriptors | Cross-process persistence is intentionally not promised; restart loses affinity |
 | Auto Combo | Manual combo definitions and four heuristic variants | Candidates lack a central capability, health, quota, ACL, and cost-aware resolver; fallback can produce a non-routable placeholder |
 | Protocol support | Broad translator suite and direct routing structure | Stored baseline reports 17 failed suites / 26 failed tests; known `it.fails` cases remain in translator fixtures |
 | Delivery | Docker and GitBook publishing workflows | No standard `test`, lint/type-check command, or test/build quality gate in CI |
