@@ -76,10 +76,22 @@ export function transformToOllama(response, model) {
   });
 
   if (!response.body) {
-    return new Response("", { status: response.status, headers: { "Content-Type": "application/x-ndjson" } });
+    const correlationId = response.headers?.get?.("x-rc-correlation-id");
+    return new Response("", {
+      status: response.status,
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        ...(correlationId ? { "x-rc-correlation-id": correlationId } : {}),
+      },
+    });
   }
+  const correlationId = response.headers?.get?.("x-rc-correlation-id");
+  const headers = {
+    "Content-Type": "application/x-ndjson",
+    "Access-Control-Allow-Origin": "*",
+    ...(correlationId ? { "x-rc-correlation-id": correlationId } : {}),
+  };
   return new Response(response.body.pipeThrough(transform), {
-    headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
+    headers,
   });
 }
-
