@@ -2,18 +2,16 @@
 ARG NODE_IMAGE=node:22-alpine
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
-# CN mirror for apk (used by builder and runner stages)
-RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
 
 FROM base AS builder
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
+RUN apk --no-cache add python3 make g++ linux-headers
 
 # The repository is pnpm-native. Install the pinned package-manager version so
 # image builds cannot silently resolve a different dependency graph.
 RUN npm install --global pnpm@11.5.2
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
 
 COPY . ./
@@ -53,7 +51,7 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
   ln -sf /app/data-home /root/.9router 2>/dev/null || true
 
 # Fix permissions at runtime (handles mounted volumes)
-RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
+RUN apk --no-cache add su-exec && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 
