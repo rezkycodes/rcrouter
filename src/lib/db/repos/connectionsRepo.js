@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { incrementMetric } from "@/lib/observability/metrics.js";
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -95,6 +96,7 @@ const CONN_CACHE_TTL_MS = 2000; // 2s
 
 export function invalidateConnectionCache() {
   _connCache.clear();
+  incrementMetric("router_connection_cache_events_total", { outcome: "invalidated" });
 }
 
 export async function getProviderConnections(filter = {}) {
@@ -102,8 +104,10 @@ export async function getProviderConnections(filter = {}) {
   const cached = _connCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
+    incrementMetric("router_connection_cache_events_total", { outcome: "hit" });
     return cached.data.map(c => ({ ...c }));
   }
+  incrementMetric("router_connection_cache_events_total", { outcome: "miss" });
 
   const db = await getAdapter();
   const where = [];
@@ -129,8 +133,10 @@ export async function getProviderConnectionById(id) {
   const cached = _connCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
+    incrementMetric("router_connection_cache_events_total", { outcome: "hit" });
     return cached.data ? { ...cached.data } : null;
   }
+  incrementMetric("router_connection_cache_events_total", { outcome: "miss" });
 
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);

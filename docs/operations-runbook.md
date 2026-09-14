@@ -90,6 +90,19 @@ sensitive; disable request logging when a payload-level trace is unnecessary.
 The dashboard request-details API returns metadata with conversation payloads
 redacted.
 
+## Metrics and correlation
+
+Dashboard operators can query `GET /api/metrics` with the normal dashboard
+cookie or machine-bound CLI token. The response includes bounded counters and
+latency summaries for usage writes, pending requests, connection-cache hits,
+semaphore outcomes, circuit-breaker transitions, and Context Relay affinity,
+plus the current breaker/semaphore state. Semaphore keys are one-way digests;
+prompts, credentials, API keys, and raw session values are never metric labels.
+
+Every chat response carries an `x-rc-correlation-id` such as `rc_<random>`.
+The identifier is generated per request and is safe to include in an incident
+ticket; it is not derived from an API key or client session value.
+
 ## Release / rollback
 
 Run the quality gate and production build before a staged restart:

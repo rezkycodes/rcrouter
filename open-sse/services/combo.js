@@ -9,6 +9,7 @@ import { getCircuitBreaker, STATE } from "../utils/circuitBreaker.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { createHash } from "node:crypto";
+import { incrementMetric } from "@/lib/observability/metrics.js";
 import { descriptorConnectionId, descriptorKey, makeDescriptor } from "./targetDescriptor.js";
 
 // Strip "combo/" prefix from model string (e.g. "combo/coding-stack" → "coding-stack")
@@ -452,6 +453,7 @@ export function resetContextRelay() {
  */
 export function commitContextRelayAffinity(sessionKey, connectionId, targetKey) {
   if (!sessionKey || !connectionId || !targetKey) return;
+  incrementMetric("router_affinity_events_total", { outcome: "committed" });
   const now = Date.now();
   // ponytail: an in-process binding is enough until cross-process affinity is required.
   sessionContextMap.delete(sessionKey);
@@ -477,6 +479,7 @@ export function invalidateContextRelayAffinity(sessionKey, connectionId) {
   const entry = sessionContextMap.get(sessionKey);
   if (entry && entry.connectionId === connectionId) {
     sessionContextMap.delete(sessionKey);
+    incrementMetric("router_affinity_events_total", { outcome: "invalidated" });
   }
 }
 
@@ -492,17 +495,20 @@ export function orderTargetsByContextRelay(targets, options = {}) {
   for (const [id, entry] of sessionContextMap.entries()) {
     if (now - entry.lastSeenAt > SESSION_CONTEXT_TTL_MS) {
       sessionContextMap.delete(id);
+      incrementMetric("router_affinity_events_total", { outcome: "expired" });
     }
   }
 
   const sessionId = options.sessionId;
   if (!sessionId) {
+    incrementMetric("router_affinity_events_total", { outcome: "disabled" });
     return [...targets];
   }
 
   const sessionKey = affinityId(options.tenantScope, options.comboName || "default", sessionId);
   const sessionCorrelation = sessionKey.slice(0, 12);
   const existing = sessionContextMap.get(sessionKey);
+  if (!existing) incrementMetric("router_affinity_events_total", { outcome: "miss" });
 
   const isHealthy = (target) => {
     try {
@@ -525,6 +531,7 @@ export function orderTargetsByContextRelay(targets, options = {}) {
     targetIndex = targets.findIndex((t) => getTargetKey(t) === existing.targetKey);
     // If the anchored target is still in the pool and healthy, keep it!
     if (targetIndex !== -1 && isHealthy(targets[targetIndex])) {
+      incrementMetric("router_affinity_events_total", { outcome: "hit" });
       existing.lastSeenAt = now;
       sessionContextMap.delete(sessionKey);
       sessionContextMap.set(sessionKey, existing);

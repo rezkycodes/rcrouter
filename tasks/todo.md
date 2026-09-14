@@ -39,7 +39,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 
 ## Release readiness
 
-- [ ] Add metrics, dashboard queries, and privacy-safe correlation identifiers.
+- [x] Add metrics, dashboard queries, and privacy-safe correlation identifiers (bounded in-memory counters/gauges/histograms, protected `/api/metrics`, redacted semaphore keys, and `x-rc-correlation-id`; focused observability tests).
 - [x] Write operator runbooks for breaker, quota, account, cache, and affinity incidents (`docs/operations-runbook.md`).
 - [ ] Update README claims only after benchmark/test evidence exists.
 - [x] Add root `AGENTS.md` with pipeline, test, and invariants once conventions are stable.

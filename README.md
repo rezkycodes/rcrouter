@@ -220,6 +220,14 @@ positive number to cap in-flight upstream requests, or `0`/`null` to bypass
 the cap. Multi-process deployments need a shared coordinator if limits must
 apply across workers.
 
+### Operational metrics and correlation
+
+`GET /api/metrics` is protected by dashboard authentication (or the machine-bound
+CLI token). It returns bounded, process-local counters, gauges, latency summaries,
+circuit-breaker states, and redacted semaphore identifiers; prompts, credentials,
+and raw session identifiers are not included. Chat responses carry an
+`x-rc-correlation-id` header that can be matched with request-detail diagnostics.
+
 ---
 
 ## 🤖 Connecting Your AI Coding Tools

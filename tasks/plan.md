@@ -15,6 +15,7 @@ This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the
 - LoopGuard is now configurable (enabled by default), uses recursive argument normalization, skips multimodal/tool turns in text-loop detection, and has focused wiring/false-positive regressions.
 - The operations runbook now documents breaker/quota/account/semaphore/cache/affinity handling, privacy boundaries, and release rollback expectations. Database export/import now accepts only machine-bound CLI tokens or verified dashboard passwords.
 - Credential storage is documented as plaintext-at-rest with an explicit master-key decision checklist; application-level encryption remains deferred until that operational key lifecycle is approved.
+- Operational metrics now cover usage, pending work, connection-cache, semaphore, breaker, and Context Relay events through protected `/api/metrics`; chat responses carry per-request opaque correlation IDs and no raw session/credential labels.
 - Verification on 2026-09-14: `pnpm check` passed against the reviewed baseline (60 current failures vs 101 baseline, 41 resolved; lint 134 vs 136), and `pnpm run build` completed successfully.
 
 ## Verified starting point
@@ -221,7 +222,7 @@ Client request
 **Work**
 
 - Document the single source of truth for configuration, ports, `~/.rcrouter` migration, breakers, cache freshness, account capacity, and affinity restart semantics.
-- Add structured operational metrics/dashboards for routing decision, queue depth, cache behavior, breaker status, affinity lifecycle, translator compatibility, and failure class.
+- Add structured operational metrics/dashboards for routing decision, queue depth, cache behavior, breaker status, affinity lifecycle, translator compatibility, and failure class. The first bounded slice is now available through protected `/api/metrics`; labels are allow-listed and identifiers are opaque.
 - Add runbooks for disabled accounts, quota reset, breaker recovery, leaked semaphore slot investigation, upstream sync, and rollback.
 - Add a concise root `AGENTS.md` after the implementation conventions stabilize, so contributors can locate pipeline, tests, and invariants without relying on README prose.
 

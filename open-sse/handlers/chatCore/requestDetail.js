@@ -18,6 +18,7 @@ export function extractRequestConfig(body, stream) {
   for (const param of OPTIONAL_PARAMS) {
     if (body[param] !== undefined) config[param] = body[param];
   }
+  if (body?.__rcCorrelationId) config.correlationId = body.__rcCorrelationId;
   return config;
 }
 
@@ -78,6 +79,7 @@ export function buildRequestDetail(base, overrides = {}) {
     response: base.response || {},
     pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
+    correlationId: base.correlationId || base.request?.correlationId || null,
     ...overrides
   };
 }

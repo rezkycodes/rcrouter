@@ -7,6 +7,8 @@
  * Ported from OmniRoute's accountSemaphore.ts, simplified to plain JS ESM.
  */
 
+import { incrementMetric } from "@/lib/observability/metrics.js";
+
 export function buildAccountSemaphoreKey({ provider, accountKey, proxyHash = "direct" }) {
   return `${String(provider)}:${String(accountKey)}:${String(proxyHash)}`;
 }
@@ -96,11 +98,13 @@ export function acquire(semaphoreKey, options = {}) {
     gate.blockedUntil = null;
     if (gate.running < gate.maxConcurrency) {
       gate.running++;
+      incrementMetric("router_semaphore_acquire_total", { outcome: "granted" });
       let released = false;
       return Promise.resolve(() => {
         if (released) return;
         released = true;
         gate.running--;
+        incrementMetric("router_semaphore_release_total", { outcome: "released" });
         drainQueue(semaphoreKey, gate);
       });
     }
@@ -108,6 +112,7 @@ export function acquire(semaphoreKey, options = {}) {
 
   // Queue full?
   if (gate.queue.length >= maxQueueSize) {
+    incrementMetric("router_semaphore_acquire_total", { outcome: "rejected" });
     return Promise.reject(new SemaphoreCapacityError(semaphoreKey, 0));
   }
 
@@ -118,6 +123,7 @@ export function acquire(semaphoreKey, options = {}) {
       settled = true;
       const idx = gate.queue.indexOf(entry);
       if (idx >= 0) gate.queue.splice(idx, 1);
+      incrementMetric("router_semaphore_acquire_total", { outcome: "timeout" });
       reject(new SemaphoreCapacityError(semaphoreKey, timeoutMs));
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
@@ -129,6 +135,7 @@ export function acquire(semaphoreKey, options = {}) {
         clearTimeout(timer);
         const idx = gate.queue.indexOf(entry);
         if (idx >= 0) gate.queue.splice(idx, 1);
+        incrementMetric("router_semaphore_acquire_total", { outcome: "aborted" });
         reject(signal.reason || new Error("Aborted"));
       });
     }
@@ -150,6 +157,7 @@ export function acquire(semaphoreKey, options = {}) {
       timer,
     };
     gate.queue.push(entry);
+    incrementMetric("router_semaphore_acquire_total", { outcome: "queued" });
     scheduleCleanup(semaphoreKey, gate);
   });
 }
@@ -166,6 +174,7 @@ function drainQueue(semaphoreKey, gate) {
       if (released) return;
       released = true;
       gate.running--;
+      incrementMetric("router_semaphore_release_total", { outcome: "released" });
       drainQueue(semaphoreKey, gate);
     });
     // A timeout/abort can settle a waiter after it is shifted but before
@@ -185,6 +194,7 @@ function drainQueue(semaphoreKey, gate) {
 export function markBlocked(semaphoreKey, durationMs) {
   const gate = gates.get(semaphoreKey);
   if (!gate) return;
+  incrementMetric("router_semaphore_block_total", { outcome: "blocked" });
   const until = Date.now() + durationMs;
   if (!gate.blockedUntil || gate.blockedUntil < until) {
     gate.blockedUntil = until;

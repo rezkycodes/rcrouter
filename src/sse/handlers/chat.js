@@ -53,6 +53,12 @@ import {
   resolveAccountSemaphoreKey,
   resolveAccountSemaphoreMaxConcurrency,
 } from "open-sse/services/accountSemaphore.js";
+import {
+  addCorrelationHeader,
+  createCorrelationId,
+  incrementMetric,
+  observeMetric,
+} from "@/lib/observability/metrics.js";
 
 function checkCircuitBreaker(provider, proxyHash = null, enabled = true) {
   if (!enabled) return false;
@@ -76,12 +82,22 @@ function isQuotaExhaustedForNow(quotaInfo) {
  * Format detection and translation handled by translator
  */
 export async function handleChat(request, clientRawRequest = null) {
+  const requestStartTime = Date.now();
+  const correlationId = createCorrelationId();
+  const respond = (value) => {
+    const response = value?.response || value;
+    incrementMetric("router_chat_requests_total", {
+      status: String(response?.status || 500),
+    });
+    observeMetric("router_chat_latency_ms", Date.now() - requestStartTime, { route: "chat" });
+    return addCorrelationHeader(response, correlationId);
+  };
   let body;
   try {
     body = await request.json();
   } catch {
     log.warn("CHAT", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+    return respond(errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body"));
   }
 
   // Build clientRawRequest for logging (if not provided)
@@ -93,6 +109,8 @@ export async function handleChat(request, clientRawRequest = null) {
       headers: Object.fromEntries(request.headers.entries())
     };
   }
+  clientRawRequest = { ...clientRawRequest, correlationId };
+  Object.defineProperty(body, "__rcCorrelationId", { value: correlationId, enumerable: false });
   // Claude Code marks a 1M-context request as `<model>[1m]`; the marker matches
   // no combo, alias or provider/model pair, so it must not reach resolution.
   // The capability travels in the anthropic-beta header, forwarded as-is.
@@ -119,36 +137,36 @@ export async function handleChat(request, clientRawRequest = null) {
   if (!trustedInternal && settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+      return respond(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"));
     }
     apiKeyInfo = await isValidApiKey(apiKey);
     if (!apiKeyInfo) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+      return respond(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"));
     }
   } else if (!trustedInternal && apiKey) {
     apiKeyInfo = await isValidApiKey(apiKey);
     if (!apiKeyInfo) {
       log.warn("AUTH", "Invalid API key");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+      return respond(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"));
     }
   }
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
+    return respond(errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model"));
   }
 
   // ACL: check if LLM kind is allowed for this API key
   if (!isKindAllowed(apiKeyInfo, "llm")) {
     log.warn("AUTH", "LLM kind not allowed for API key");
-    return errorResponse(HTTP_STATUS.FORBIDDEN, "Chat/LLM requests are not allowed for this API key");
+    return respond(errorResponse(HTTP_STATUS.FORBIDDEN, "Chat/LLM requests are not allowed for this API key"));
   }
 
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
-  if (bypassResponse) return bypassResponse.response || bypassResponse;
+  if (bypassResponse) return respond(bypassResponse.response || bypassResponse);
 
   const requiredCapabilities = detectRequiredCapabilities(body);
   const circuitBreakerEnabled = settings.circuitBreakerEnabled !== false && settings.circuitBreakerEnabled !== 0;
@@ -193,7 +211,7 @@ export async function handleChat(request, clientRawRequest = null) {
     });
     if (autoComboResult?.noEligibleTargets) {
       log.warn("CHAT", `Auto combo "${modelStr}" has no eligible targets`);
-      return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "No eligible models available for auto combo");
+      return respond(errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "No eligible models available for auto combo"));
     }
     if (autoComboResult?.models?.length > 0) {
       comboModels = autoComboResult.models;
@@ -206,7 +224,7 @@ export async function handleChat(request, clientRawRequest = null) {
     // ACL: check if this combo is allowed for this API key (skip auto-combo or check if restricted)
     if (!autoComboResult && !isComboAllowed(apiKeyInfo, modelStr)) {
       log.warn("AUTH", `Combo "${modelStr}" not allowed for API key`);
-      return errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${modelStr}" is not allowed for this API key`);
+      return respond(errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${modelStr}" is not allowed for this API key`));
     }
     // Check for combo-specific strategy first, fallback to global
     const comboSpecificStrategy = autoComboResult?.strategy || comboStrategies[modelStr]?.fallbackStrategy;
@@ -216,7 +234,7 @@ export async function handleChat(request, clientRawRequest = null) {
 
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
-      return handleFusionChat({
+      return respond(await handleFusionChat({
         body,
         models: comboModels,
         handleSingleModel: (b, m, isPanel) => {
@@ -231,7 +249,7 @@ export async function handleChat(request, clientRawRequest = null) {
         comboName: modelStr,
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
-      });
+      }));
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
@@ -243,7 +261,7 @@ export async function handleChat(request, clientRawRequest = null) {
                       body?.user ||
                       null;
     log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit}${sessionId ? ", session affinity enabled" : ""})`);
-    return handleComboChat({
+    return respond(await handleComboChat({
       body,
       models: augmentedModels,
       handleSingleModel: withCapacityAdapterStripping(
@@ -259,7 +277,7 @@ export async function handleChat(request, clientRawRequest = null) {
       queueDepth: comboStrategies[modelStr]?.queueDepth ?? null,
       sessionId,
       tenantScope: apiKeyInfo?.id || apiKey,
-    });
+    }));
   }
 
   // Single model request — may still switch to a capacity-adapter model if the
@@ -268,7 +286,7 @@ export async function handleChat(request, clientRawRequest = null) {
   if (soloAugmented.length > 1) {
     const adapterAdded = soloAugmented.filter((m) => m !== modelStr);
     log.info("CHAT", `Capacity adapter for [${[...requiredCapabilities].join(",")}] on "${modelStr}" → trying ${soloAugmented.join(", ")}`);
-    return handleComboChat({
+    return respond(await handleComboChat({
       body,
       models: soloAugmented,
       handleSingleModel: withCapacityAdapterStripping(
@@ -281,10 +299,10 @@ export async function handleChat(request, clientRawRequest = null) {
       signal: request?.signal ?? null,
       timeoutMs: comboStrategies[modelStr]?.targetTimeoutMs ?? null,
       queueDepth: comboStrategies[modelStr]?.queueDepth ?? null,
-    });
+    }));
   }
 
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, apiKeyInfo);
+  return respond(await handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, apiKeyInfo));
 }
 
 /**
@@ -500,6 +518,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       continue;
     }
 
+    const upstreamAttemptStart = Date.now();
     let result;
     try {
       result = await handleChatCore({
@@ -508,6 +527,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         credentials: refreshedCredentials,
         log,
         clientRawRequest,
+        correlationId: clientRawRequest?.correlationId,
         connectionId: credentials.connectionId,
         userAgent,
         apiKey,
@@ -549,7 +569,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       });
     } finally {
+      // finally: release capacity before any fallback/account state update below.
       releaseAccountSlot?.();
+      const attemptStatus = result?.success
+        ? "success"
+        : (result?.status ? String(result.status) : "exception");
+      incrementMetric("router_upstream_attempts_total", { provider, status: attemptStatus });
+      observeMetric("router_upstream_latency_ms", Date.now() - upstreamAttemptStart, { provider });
     }
 
     if (result.success) {

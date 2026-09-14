@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { incrementMetric, observeMetric } from "@/lib/observability/metrics.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -189,6 +190,10 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
     lastErrorProvider.ts = Date.now();
   }
 
+  incrementMetric("router_pending_requests_total", {
+    outcome: started ? "started" : (error ? "error" : "completed"),
+  });
+
   // [PENDING] console line removed; lifecycle is visible via "▶" and "📊 done" lines
   scheduleStatsEvent("pending");
 }
@@ -306,6 +311,12 @@ export async function saveRequestUsage(entry) {
 
     if (inserted) {
       pushToRing(entry);
+      incrementMetric("router_usage_records_total", {
+        provider: entry.provider || "unknown",
+        status: String(entry.status || "ok").split(/\s+/, 1)[0],
+      });
+      observeMetric("router_usage_tokens", promptTokens, { kind: "prompt" });
+      observeMetric("router_usage_tokens", completionTokens, { kind: "completion" });
       scheduleStatsEvent("update", 250);
     }
   } catch (e) {

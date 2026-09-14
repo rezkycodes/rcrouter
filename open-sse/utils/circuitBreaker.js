@@ -10,6 +10,8 @@
  * Keyed per `provider:proxyHash` to isolate proxy-level failures from direct/alternate proxies.
  */
 
+import { incrementMetric } from "@/lib/observability/metrics.js";
+
 export const STATE = {
   CLOSED: "CLOSED",
   DEGRADED: "DEGRADED",
@@ -83,6 +85,7 @@ class CircuitBreaker {
     this.state = newState;
     this.lastStateChange = Date.now();
     this._transitionHistory.push({ from: old, to: newState, at: new Date().toISOString() });
+    if (old !== newState) incrementMetric("router_circuit_breaker_transitions_total", { from: old, to: newState });
     if (this._transitionHistory.length > 20) this._transitionHistory.shift();
     if (newState === STATE.OPEN) {
       this.openedAt = Date.now();
@@ -112,6 +115,7 @@ class CircuitBreaker {
         this._transition(STATE.HALF_OPEN);
         return true;
       }
+      incrementMetric("router_circuit_breaker_rejections_total", { state: STATE.OPEN });
       return false;
     }
     if (this.state === STATE.HALF_OPEN) {
@@ -119,6 +123,7 @@ class CircuitBreaker {
         this.halfOpenRemaining--;
         return true;
       }
+      incrementMetric("router_circuit_breaker_rejections_total", { state: STATE.HALF_OPEN });
       return false;
     }
     return true;
@@ -126,6 +131,7 @@ class CircuitBreaker {
 
   _onSuccess() {
     this.successCount++;
+    incrementMetric("router_circuit_breaker_events_total", { outcome: "success" });
     if (this.state === STATE.HALF_OPEN) {
       this._transition(STATE.CLOSED);
     } else if (this.state === STATE.DEGRADED && this.successCount >= this.failureThreshold) {
@@ -153,6 +159,7 @@ class CircuitBreaker {
   _onFailure(error) {
     if (this.isFailure && !this.isFailure(error)) return;
     this.failureCount++;
+    incrementMetric("router_circuit_breaker_events_total", { outcome: "failure" });
     this.lastFailureTime = Date.now();
 
     if (this.failureWindowMs > 0) {
