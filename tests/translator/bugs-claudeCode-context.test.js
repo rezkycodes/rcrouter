@@ -54,9 +54,9 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(JSON.stringify(out)).toContain("ENCRYPTED_BLOB");
   });
 
-  // claude-to-openai.js:155-173 — tool_result image block stringified into raw JSON
-  // KNOWN BUG
-  it.fails("tool_result image block is preserved", () => {
+  // claude-to-openai.js:155-173 — tool_result images remain OpenAI multimodal
+  // content blocks rather than being stringified into raw JSON.
+  it("tool_result image block is preserved", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
         { role: "assistant", content: [{ type: "tool_use", id: "call_1", name: "screenshot", input: {} }] },
@@ -68,6 +68,8 @@ describe("Claude Code CLI context → OpenAI", () => {
       ],
     });
     const tool = out.messages.find((m) => m.role === "tool");
-    expect(tool?.content, "image turned into raw JSON").not.toMatch(/^\[/);
+    expect(tool?.content, "image turned into raw JSON").toEqual([
+      { type: "image_url", image_url: { url: "data:image/png;base64,IMG" } },
+    ]);
   });
 });

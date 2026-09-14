@@ -16,7 +16,6 @@ quality check look green.
 | C-04 | OpenAI → CommandCode | `tests/translator/bugs-gemini-cursor-commandcode.test.js` — image content | Bounded loss | `/alpha/generate` currently exposes text/tool blocks only. Preserve the image through a verified upstream field before promoting this case. |
 | C-05 | OpenAI Responses → OpenAI Chat | `tests/translator/bugs-codexCli-responses.test.js` — `input_image.file_id` | Bounded loss | Resolve file IDs through an authenticated file service before translation; a bare file ID is not a valid `image_url`. |
 | C-06 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — `redacted_thinking` | Bounded loss | Preserve encrypted thinking only when the target has a corresponding continuity field; otherwise expose an explicit privacy-safe diagnostic. |
-| C-07 | Claude → OpenAI | `tests/translator/bugs-claudeCode-context.test.js` — tool-result image | Bounded loss | Keep multimodal tool output as OpenAI content blocks once downstream tool consumers are covered by a streaming regression. |
 
 “Bounded loss” means the translator deliberately avoids inventing a wire
 representation. The request remains valid, but the unsupported block is not
@@ -29,6 +28,7 @@ The following high-frequency losses now have passing regression coverage:
 
 - OpenAI `tool_choice: "none"` and `reasoning_content` → Claude thinking blocks.
 - Claude base64/remote images and multimodal tool results → OpenAI blocks.
+- Claude tool-result image blocks now have a passing multimodal regression.
 - Multiple OpenAI system messages → one Gemini `systemInstruction`.
 - Explicit Cursor `max_tokens`, Kiro `max_tokens`/`max_output_tokens`, and
   malformed CommandCode tool arguments.
