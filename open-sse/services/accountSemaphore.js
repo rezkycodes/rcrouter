@@ -135,10 +135,11 @@ export function acquire(semaphoreKey, options = {}) {
 
     const entry = {
       resolve: (release) => {
-        if (settled) return;
+        if (settled) return false;
         settled = true;
         clearTimeout(timer);
         resolve(release);
+        return true;
       },
       reject: (err) => {
         if (settled) return;
@@ -161,12 +162,15 @@ function drainQueue(semaphoreKey, gate) {
     if (!entry) break;
     gate.running++;
     let released = false;
-    entry.resolve(() => {
+    const accepted = entry.resolve(() => {
       if (released) return;
       released = true;
       gate.running--;
       drainQueue(semaphoreKey, gate);
     });
+    // A timeout/abort can settle a waiter after it is shifted but before
+    // resolve() runs. Undo the reservation so cancellation cannot leak a slot.
+    if (!accepted) gate.running--;
   }
 
   // If nothing is running and nothing is waiting, schedule an immediate cleanup.

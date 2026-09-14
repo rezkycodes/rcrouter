@@ -38,6 +38,12 @@ import {
   recordProviderSuccess,
 } from "open-sse/services/accountFallback.js";
 import { getProxyHash } from "@/lib/network/connectionProxy.js";
+import {
+  acquire as acquireAccountSlot,
+  isSemaphoreCapacityError,
+  resolveAccountSemaphoreKey,
+  resolveAccountSemaphoreMaxConcurrency,
+} from "open-sse/services/accountSemaphore.js";
 
 function checkCircuitBreaker(provider, proxyHash = null, enabled = true) {
   if (!enabled) return false;
@@ -134,6 +140,10 @@ export async function handleChat(request, clientRawRequest = null) {
       settings,
       getComboModels,
     });
+    if (autoComboResult?.noEligibleTargets) {
+      log.warn("CHAT", `Auto combo "${modelStr}" has no eligible targets`);
+      return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "No eligible models available for auto combo");
+    }
     if (autoComboResult?.models?.length > 0) {
       comboModels = autoComboResult.models;
     }
@@ -408,51 +418,83 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
-      modelInfo: { provider, model },
-      credentials: refreshedCredentials,
-      log,
-      clientRawRequest,
+    const semaphoreKey = resolveAccountSemaphoreKey({
+      provider,
+      model,
       connectionId: credentials.connectionId,
-      userAgent,
-      apiKey,
-      clientSignal,
-      ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: !!chatSettings.rtkEnabled,
-      headroomEnabled: !!chatSettings.headroomEnabled,
-      headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
-      headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
-      headroomTimeoutMs: chatSettings.headroomTimeoutMs,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
-      cavemanLevel: chatSettings.cavemanLevel || "full",
-      ponytailEnabled: !!chatSettings.ponytailEnabled,
-      ponytailLevel: chatSettings.ponytailLevel || "full",
-      pxpipeEnabled: !!chatSettings.pxpipeEnabled,
-      pxpipeMinChars: chatSettings.pxpipeMinChars,
-      pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
-      // Lazily warms the in-process module on first use; null when not installed (fail-open)
-      pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
-      onPxpipeEvent: appendPxpipeEvent,
-      providerThinking,
-      // Detect source format by endpoint + body
-      sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          ...newCreds,
-          existingProviderSpecificData: credentials.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
-        // "Consecutive" strikes: a success clears the breaker for this pair.
-        clearAntigravityStrikes(credentials.connectionId, model);
-        if (circuitBreakerEnabled) {
-          recordProviderSuccess(provider, proxyHash);
-        }
-      }
+      credentials,
+      proxyHash,
     });
+    let releaseAccountSlot = null;
+    try {
+      if (semaphoreKey) {
+        releaseAccountSlot = await acquireAccountSlot(semaphoreKey, {
+          maxConcurrency: resolveAccountSemaphoreMaxConcurrency(credentials),
+          maxQueueSize: options?.maxQueueSize,
+          signal: clientSignal,
+        });
+      }
+    } catch (error) {
+      if (clientSignal?.aborted) return new Response(null, { status: 499 });
+      if (!isSemaphoreCapacityError(error)) throw error;
+      options?._invalidateAffinity?.(options._affinityKey, credentials.connectionId);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = error.message;
+      lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+      log.warn("AUTH", `${provider} account capacity reached — trying another account`);
+      continue;
+    }
+
+    let result;
+    try {
+      result = await handleChatCore({
+        body: { ...body, model: `${provider}/${model}` },
+        modelInfo: { provider, model },
+        credentials: refreshedCredentials,
+        log,
+        clientRawRequest,
+        connectionId: credentials.connectionId,
+        userAgent,
+        apiKey,
+        clientSignal,
+        ccFilterNaming: !!chatSettings.ccFilterNaming,
+        rtkEnabled: !!chatSettings.rtkEnabled,
+        headroomEnabled: !!chatSettings.headroomEnabled,
+        headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
+        headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+        headroomTimeoutMs: chatSettings.headroomTimeoutMs,
+        cavemanEnabled: !!chatSettings.cavemanEnabled,
+        cavemanLevel: chatSettings.cavemanLevel || "full",
+        ponytailEnabled: !!chatSettings.ponytailEnabled,
+        ponytailLevel: chatSettings.ponytailLevel || "full",
+        pxpipeEnabled: !!chatSettings.pxpipeEnabled,
+        pxpipeMinChars: chatSettings.pxpipeMinChars,
+        pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
+        // Lazily warms the in-process module on first use; null when not installed (fail-open)
+        pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
+        onPxpipeEvent: appendPxpipeEvent,
+        providerThinking,
+        // Detect source format by endpoint + body
+        sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+        onCredentialsRefreshed: async (newCreds) => {
+          await updateProviderCredentials(credentials.connectionId, {
+            ...newCreds,
+            existingProviderSpecificData: credentials.providerSpecificData,
+            testStatus: "active"
+          });
+        },
+        onRequestSuccess: async () => {
+          await clearAccountError(credentials.connectionId, credentials, model);
+          // "Consecutive" strikes: a success clears the breaker for this pair.
+          clearAntigravityStrikes(credentials.connectionId, model);
+          if (circuitBreakerEnabled) {
+            recordProviderSuccess(provider, proxyHash);
+          }
+        }
+      });
+    } finally {
+      releaseAccountSlot?.();
+    }
 
     if (result.success) {
       if (!clientSignal?.aborted) {

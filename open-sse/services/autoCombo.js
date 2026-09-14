@@ -9,8 +9,6 @@
  * - auto/reasoning    (Deep thinking and reasoning models)
  */
 
-import { parseModel } from "./model.js";
-
 export const AUTO_VARIANTS = {
   DEFAULT: "auto",
   CODING: "auto/coding",
@@ -58,7 +56,7 @@ export function normalizeAutoVariant(modelStr) {
  * @param {object} params.settings - App settings
  * @param {Array<object>} [params.connections] - Pre-fetched active connections
  * @param {Function} [params.getComboModels] - Function to lookup manual combos
- * @returns {Promise<{ models: string[], strategy: string, variant: string, isAuto: boolean }>}
+ * @returns {Promise<{ models: string[], strategy: string, variant: string, isAuto: boolean, noEligibleTargets?: boolean, reason?: string }>}
  */
 export async function resolveAutoCombo({
   modelStr,
@@ -152,11 +150,26 @@ export async function resolveAutoCombo({
     filtered = [...candidates];
   }
 
-  // Fallback: If filtered set is empty, fall back to all active candidates so requests never fail
+  // Fallback: If filtered set is empty, fall back to all active candidates so a
+  // narrow policy does not fail while there are still routable connections.
   const finalModels = filtered.length > 0 ? filtered : candidates;
 
+  // A placeholder such as "auto/fallback" is not executable by the downstream
+  // provider path. Return a typed result instead so the API can explain the
+  // unavailability without attempting a synthetic model.
+  if (finalModels.length === 0) {
+    return {
+      models: [],
+      strategy: strategyOverride || defaultStrategy,
+      variant,
+      isAuto: true,
+      noEligibleTargets: true,
+      reason: "no-active-connections",
+    };
+  }
+
   return {
-    models: finalModels.length > 0 ? finalModels : ["auto/fallback"],
+    models: finalModels,
     strategy: strategyOverride || defaultStrategy,
     variant,
     isAuto: true,

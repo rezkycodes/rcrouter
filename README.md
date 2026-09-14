@@ -25,6 +25,7 @@ Standard AI routers often suffer from three major shortcomings when driving long
 - ✅ **Upstream v0.5.75 Core:** Fully aligned with the latest official 9router core (1M context window auto-compact, 4-marker Claude cache budget caps, Kiro protocol updates).
 - ✅ **Granular Tri-State ACL:** Per-API-key restrictions across service kinds, providers, combos, and specific models (`null` = permit all, `[]` = deny all, array = whitelist).
 - ✅ **High-Throughput TPS Caching:** 5-second setting cache and 2-second connection cache with per-provider mutexes, eliminating synchronous SQLite read bottlenecks.
+- ✅ **Account Capacity Guard:** Per-connection concurrency caps (default 3) with FIFO queueing and cancellation-safe slot release; configure `maxConcurrency` in a connection's provider-specific settings.
 - ✅ **In-Memory Circuit Breaker:** Keyed per `provider:proxyHash` that automatically isolates failing upstreams while excluding HTTP 429 rate limits.
 - ✅ **Token Savers (Ponytail + Caveman + RTK):** Injects senior-developer YAGNI rules (Lite, Full, Ultra) and terse formatting into system prompts, cutting output tokens by 20–40%.
 - ✅ **Anti-Loop Hardening:** Built-in `LoopGuard` terminates repetitive planning loops and converts Kimi-native `<|tool_calls_section_begin|>` into standard OpenAI `tool_calls`.
@@ -203,6 +204,11 @@ pnpm run build
 The full suite is not yet all-green. The reviewed baseline and its failure
 classification are documented in `tests/__baseline__/README.md`; do not update
 the snapshot merely to hide a new failure.
+
+Account capacity is process-local. Set a connection's `maxConcurrency` to a
+positive number to cap in-flight upstream requests, or `0`/`null` to bypass
+the cap. Multi-process deployments need a shared coordinator if limits must
+apply across workers.
 
 ---
 
