@@ -118,6 +118,7 @@ Reduce upstream token usage without modifying client code:
   - `ultra`: Aggressive YAGNI: favors deletion over addition, prefers one-line stdlib solutions.
 - **Caveman Mode:** Enforces terse, jargon-free output format.
 - **RTK (Request Token Killer):** In-place compression of bulky `tool_result` contents (such as git diffs, file searches, directory listings).
+- **LoopGuard:** Enabled by default; detects repeated tool calls or text-only planning loops and injects a stop-and-summarize hint. Disable it with `PATCH /api/settings` (`{"loopGuardEnabled":false}`) when a provider intentionally repeats context.
 
 ---
 

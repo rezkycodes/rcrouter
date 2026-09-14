@@ -117,7 +117,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, clientSignal }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, clientSignal, loopGuardEnabled = true }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -350,7 +350,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("TOOLPROTO", `${provider}/${model} | ${finalFormat}`);
   }
 
-  const loopDetected = applyLoopGuard(translatedBody, finalFormat, provider, model, log);
+  const loopDetected = loopGuardEnabled
+    ? applyLoopGuard(translatedBody, finalFormat, provider, model, log)
+    : false;
   if (!loopDetected && needsTerminationPrompt(provider, model)) {
     injectTerminationPrompt(translatedBody, finalFormat);
     log?.debug?.("TERMINATION", `${provider}/${model} | ${finalFormat}`);

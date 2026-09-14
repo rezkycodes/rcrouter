@@ -58,27 +58,9 @@ export default function TokenSaverClient() {
   const [showPxpipeModal, setShowPxpipeModal] = useState(false);
   const [pxpipeActionLoading, setPxpipeActionLoading] = useState(false);
   const [pxpipeActionError, setPxpipeActionError] = useState("");
-  const [locale, setLocale] = useState("en");
+  const [locale, setLocale] = useState(() => getCurrentLocale());
 
   const { copied, copy } = useCopyToClipboard();
-
-  useEffect(() => {
-    setLocale(getCurrentLocale());
-    return onLocaleChange(() => setLocale(getCurrentLocale()));
-  }, []);
-
-  const isWenyanLocale = WENYAN_LOCALES.includes(locale);
-  const visibleCavemanLevels = isWenyanLocale
-    ? CAVEMAN_LEVELS
-    : CAVEMAN_LEVELS.filter((lvl) => !lvl.wenyan);
-
-  useEffect(() => {
-    const current = CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel);
-    if (current?.wenyan && !isWenyanLocale) {
-      setCavemanLevel("ultra");
-      patchSetting({ cavemanLevel: "ultra" });
-    }
-  }, [isWenyanLocale, cavemanLevel]);
 
   const patchSetting = async (patch) => {
     try {
@@ -91,6 +73,26 @@ export default function TokenSaverClient() {
       console.log("Error updating setting:", error);
     }
   };
+
+  useEffect(() => {
+    return onLocaleChange(() => setLocale(getCurrentLocale()));
+  }, []);
+
+  const isWenyanLocale = WENYAN_LOCALES.includes(locale);
+  const visibleCavemanLevels = isWenyanLocale
+    ? CAVEMAN_LEVELS
+    : CAVEMAN_LEVELS.filter((lvl) => !lvl.wenyan);
+
+  useEffect(() => {
+    const current = CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel);
+    if (current?.wenyan && !isWenyanLocale) {
+      const reset = setTimeout(() => {
+        setCavemanLevel("ultra");
+        void patchSetting({ cavemanLevel: "ultra" });
+      }, 0);
+      return () => clearTimeout(reset);
+    }
+  }, [isWenyanLocale, cavemanLevel]);
 
   const handleRtkEnabled = async (value) => {
     try {

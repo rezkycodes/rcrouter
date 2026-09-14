@@ -523,6 +523,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
         // Lazily warms the in-process module on first use; null when not installed (fail-open)
         pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
+        loopGuardEnabled: chatSettings.loopGuardEnabled !== false && chatSettings.loopGuardEnabled !== 0,
         onPxpipeEvent: appendPxpipeEvent,
         providerThinking,
         // Detect source format by endpoint + body

@@ -14,15 +14,31 @@ const MIN_TEXT_LENGTH = 12; // ignore tiny fragments (< this many chars) to avoi
 
 /**
  * Normalize tool call arguments for stable hashing:
- * Sort object keys so {b:1,a:2} and {a:2,b:1} produce the same hash.
+ * Sort object keys recursively so equivalent nested objects produce the same hash.
+ * Some adapters already decode arguments, so object input is supported as well.
  */
-function normalizeArgs(argsStr) {
-  try {
-    const obj = JSON.parse(argsStr);
-    return JSON.stringify(obj, Object.keys(obj).sort());
-  } catch {
-    return argsStr || "";
+function normalizeArgs(rawArgs) {
+  let value = rawArgs;
+  if (typeof rawArgs === "string") {
+    try {
+      value = JSON.parse(rawArgs);
+    } catch {
+      return rawArgs || "";
+    }
   }
+  if (value === null || typeof value !== "object") return String(value ?? "");
+
+  const sortKeys = (entry) => {
+    if (Array.isArray(entry)) return entry.map(sortKeys);
+    if (!entry || typeof entry !== "object") return entry;
+    return Object.fromEntries(
+      Object.keys(entry)
+        .sort()
+        .map((key) => [key, sortKeys(entry[key])]),
+    );
+  };
+
+  return JSON.stringify(sortKeys(value));
 }
 
 function toolCallHash(tc) {
@@ -101,6 +117,11 @@ function messageText(msg) {
   return "";
 }
 
+function hasNonTextContent(msg) {
+  if (!Array.isArray(msg?.content)) return false;
+  return msg.content.some((part) => !part || part.type !== "text");
+}
+
 /**
  * Normalize text for stable comparison: lowercase, collapse whitespace, strip
  * trailing punctuation. Keeps internal words so semantic repeats still match.
@@ -130,7 +151,9 @@ function splitSentences(text) {
 function extractAssistantTexts(messages) {
   const texts = [];
   for (const msg of messages) {
-    if (msg?.role === "assistant") {
+    // Multimodal assistant turns and tool-call turns carry progress that cannot
+    // be judged from their text alone. Leave them to the modality/tool guards.
+    if (msg?.role === "assistant" && !msg.tool_calls && !hasNonTextContent(msg)) {
       const t = messageText(msg);
       if (t.length >= MIN_TEXT_LENGTH) texts.push(t);
     }

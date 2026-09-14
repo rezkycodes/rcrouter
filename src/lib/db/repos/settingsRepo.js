@@ -62,6 +62,9 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Keep loop protection on by default; operators can opt out for providers
+  // whose multimodal/tool traces intentionally repeat context.
+  loopGuardEnabled: true,
 };
 
 async function readRaw() {

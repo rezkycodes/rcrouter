@@ -35,7 +35,7 @@ Follow this order. A checkbox is complete only when its verification evidence is
 - [x] Add executor-level tests for binary/protobuf/NDJSON paths (Cursor AgentService 35/35, CommandCode NDJSON 7/7, Kiro EventStream 70/70).
 - [ ] Threat-model credential storage and approve key management before any encryption migration.
 - [x] Validate proxy outbound destinations and add ACL/error-redaction regressions (connection proxy validation + Auto Combo ACL + request-details/security redaction suites).
-- [ ] Make LoopGuard behavior explicit and test valid tool/multimodal traffic.
+- [x] Make LoopGuard behavior explicit and test valid tool/multimodal traffic (configurable setting; 8 focused regressions).
 
 ## Release readiness
 
