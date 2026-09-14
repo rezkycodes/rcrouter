@@ -48,6 +48,7 @@ import {
 import { getProxyHash } from "@/lib/network/connectionProxy.js";
 import {
   acquire as acquireAccountSlot,
+  markBlocked as markAccountBlocked,
   isSemaphoreCapacityError,
   resolveAccountSemaphoreKey,
   resolveAccountSemaphoreMaxConcurrency,
@@ -571,9 +572,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
-    const shouldFallback = provider === "antigravity" && quotaResetMs
-      ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+    const accountAvailability = provider === "antigravity" && quotaResetMs
+      ? { shouldFallback: true, cooldownMs: Math.max(0, quotaResetMs - Date.now()) }
+      : await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs);
+    const shouldFallback = accountAvailability.shouldFallback;
+    // Keep queued requests behind an account that just hit a known cooldown.
+    // The DB model lock protects future selections; the semaphore block also
+    // prevents already-queued work from immediately repeating the same 429.
+    if (shouldFallback && semaphoreKey && accountAvailability.cooldownMs > 0) {
+      markAccountBlocked(semaphoreKey, accountAvailability.cooldownMs);
+    }
     // Record provider-level failure for circuit breaker (429 excluded automatically inside recordProviderFailure)
     if (circuitBreakerEnabled) {
       recordProviderFailure(provider, result.status, result.error, log, credentials.connectionId, proxyHash);

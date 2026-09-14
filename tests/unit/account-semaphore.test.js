@@ -4,6 +4,7 @@ import {
   acquire,
   getAccountSemaphoreStats,
   isSemaphoreCapacityError,
+  markBlocked,
   resolveAccountSemaphoreKey,
   resolveAccountSemaphoreMaxConcurrency,
   SemaphoreCapacityError,
@@ -47,6 +48,26 @@ describe("account semaphore", () => {
       .rejects.toBeInstanceOf(SemaphoreCapacityError);
     expect(isSemaphoreCapacityError(new SemaphoreCapacityError("test:timeout", 5))).toBe(true);
     first();
+  });
+
+  it("keeps queued work blocked during an account cooldown", async () => {
+    vi.useFakeTimers();
+    const first = await acquire("test:blocked", { maxConcurrency: 1 });
+    markBlocked("test:blocked", 1000);
+    let resolved = false;
+    const queued = acquire("test:blocked", { maxConcurrency: 1 }).then((release) => {
+      resolved = true;
+      return release;
+    });
+
+    first();
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    vi.advanceTimersByTime(1000);
+    const releaseQueued = await queued;
+    expect(resolved).toBe(true);
+    releaseQueued();
   });
 
   it("resolves account keys and configurable limits", () => {
