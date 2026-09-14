@@ -306,7 +306,10 @@ function convertMessages(messages, model) {
 export function openaiToKiroRequest(model, body, stream, credentials) {
   const messages = body.messages || [];
   const tools = body.tools || [];
-  const maxTokens = 32000;
+  const requestedMaxTokens = Number(body.max_tokens ?? body.max_output_tokens);
+  const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0
+    ? requestedMaxTokens
+    : 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
 
