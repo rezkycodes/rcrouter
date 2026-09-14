@@ -133,7 +133,7 @@ Respond ONLY with the JSON object, no other text.`);
   // inject it into arbitrary Anthropic-compatible providers: they may reject
   // vendor-specific instructions or treat them as user content.
   const claudeCodePrompt = { type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT };
-  const includeClaudeCodePrompt = !provider || provider === "claude";
+  const includeClaudeCodePrompt = !provider || provider === "claude" || provider === "anthropic";
 
   if (includeClaudeCodePrompt && systemParts.length > 0) {
     const systemText = systemParts.join("\n");
