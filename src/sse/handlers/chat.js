@@ -12,7 +12,7 @@ import {
   isTrustedInternalRequest,
 } from "../services/auth.js";
 import { isModelAllowed } from "../services/allowedModels.js";
-import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
+import { handleAntigravityQuotaError, clearAntigravityStrikes, getAntigravityQuotaCache } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -20,7 +20,13 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
-import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
+import {
+  handleComboChat,
+  handleFusionChat,
+  detectRequiredCapabilities,
+  getAccountQuotaReset,
+  parseResetTimestampMs,
+} from "open-sse/services/combo.js";
 import { isAutoCombo, resolveAutoCombo } from "open-sse/services/autoCombo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
@@ -36,6 +42,8 @@ import {
   getProviderShortestCooldownMs,
   recordProviderFailure,
   recordProviderSuccess,
+  isAccountUnavailable,
+  isModelLockActive,
 } from "open-sse/services/accountFallback.js";
 import { getProxyHash } from "@/lib/network/connectionProxy.js";
 import {
@@ -49,6 +57,18 @@ function checkCircuitBreaker(provider, proxyHash = null, enabled = true) {
   if (!enabled) return false;
   return proxyHash ? isProviderInCooldown(provider, proxyHash) : isProviderFullyBlocked(provider);
 }
+
+function isQuotaExhaustedForNow(quotaInfo) {
+  if (!quotaInfo || typeof quotaInfo !== "object") return false;
+  const exhausted = quotaInfo.limitReached === true
+    || quotaInfo.exhausted === true
+    || quotaInfo.remaining === 0
+    || quotaInfo.remainingPercentage === 0;
+  if (!exhausted) return false;
+  const resetAt = parseResetTimestampMs(quotaInfo);
+  return !resetAt || resetAt > Date.now();
+}
+
 /**
  * Handle chat completion request
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
@@ -130,6 +150,35 @@ export async function handleChat(request, clientRawRequest = null) {
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
   const requiredCapabilities = detectRequiredCapabilities(body);
+  const circuitBreakerEnabled = settings.circuitBreakerEnabled !== false && settings.circuitBreakerEnabled !== 0;
+  const candidateFilter = async ({ model, connection }) => {
+    const info = await getModelInfo(model);
+    if (!info?.provider) return false;
+    if (!(await isProviderAllowed(apiKeyInfo, info.provider))) return false;
+
+    const resolvedModel = `${info.provider}/${info.model}`;
+    const allowed = model === resolvedModel
+      ? await isModelAllowed(resolvedModel, apiKeyInfo)
+      : (await isModelAllowed(model, apiKeyInfo) || await isModelAllowed(resolvedModel, apiKeyInfo));
+    if (!allowed) return false;
+
+    const proxyHash = getProxyHash(connection?.providerSpecificData);
+    if (checkCircuitBreaker(info.provider, proxyHash, circuitBreakerEnabled)) return false;
+    if (!connection) return true;
+    if (!connection.id || connection.isActive === false) return false;
+    if (isAccountUnavailable(connection.rateLimitedUntil) || isAccountUnavailable(connection.unavailableUntil)) return false;
+    if (isModelLockActive(connection, info.model)) return false;
+
+    if (info.provider === "antigravity") {
+      const cachedQuota = getAntigravityQuotaCache().get(connection.id)?.[info.model];
+      if (cachedQuota && isQuotaExhaustedForNow(cachedQuota)) return false;
+    }
+
+    const registeredQuota = getAccountQuotaReset(connection.id)
+      || getAccountQuotaReset(resolvedModel)
+      || getAccountQuotaReset(info.provider);
+    return !isQuotaExhaustedForNow(registeredQuota);
+  };
 
   // Check if model is an auto-combo or manual combo
   let comboModels = null;
@@ -139,6 +188,7 @@ export async function handleChat(request, clientRawRequest = null) {
       modelStr,
       settings,
       getComboModels,
+      candidateFilter,
     });
     if (autoComboResult?.noEligibleTargets) {
       log.warn("CHAT", `Auto combo "${modelStr}" has no eligible targets`);

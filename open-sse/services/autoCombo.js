@@ -56,6 +56,7 @@ export function normalizeAutoVariant(modelStr) {
  * @param {object} params.settings - App settings
  * @param {Array<object>} [params.connections] - Pre-fetched active connections
  * @param {Function} [params.getComboModels] - Function to lookup manual combos
+ * @param {Function} [params.candidateFilter] - Async predicate for ACL/health/quota eligibility
  * @returns {Promise<{ models: string[], strategy: string, variant: string, isAuto: boolean, noEligibleTargets?: boolean, reason?: string }>}
  */
 export async function resolveAutoCombo({
@@ -63,6 +64,7 @@ export async function resolveAutoCombo({
   settings = {},
   connections = null,
   getComboModels = null,
+  candidateFilter = null,
 }) {
   const variant = normalizeAutoVariant(modelStr);
   const autoConfig = (settings?.autoComboConfig && settings.autoComboConfig[variant]) || {};
@@ -71,9 +73,27 @@ export async function resolveAutoCombo({
   const mode = autoConfig.mode || "auto"; // "auto" | "combo" | "custom"
   const strategyOverride = autoConfig.strategy;
 
+  const filterModels = async (models, source, connection = null) => {
+    if (!Array.isArray(models) || models.length === 0 || typeof candidateFilter !== "function") {
+      return Array.isArray(models) ? models : [];
+    }
+    const eligible = [];
+    for (const model of models) {
+      try {
+        if (await candidateFilter({ model, connection, source, variant })) eligible.push(model);
+      } catch {
+        // A failed health/ACL probe must not make an unverified target routable.
+      }
+    }
+    return eligible;
+  };
+
   // Mode: Link to an existing manual combo
   if (mode === "combo" && autoConfig.linkedCombo && typeof getComboModels === "function") {
-    const linkedModels = await getComboModels(autoConfig.linkedCombo);
+    const linkedModels = await filterModels(
+      await getComboModels(autoConfig.linkedCombo),
+      "linked-combo"
+    );
     if (Array.isArray(linkedModels) && linkedModels.length > 0) {
       return {
         models: linkedModels,
@@ -86,8 +106,19 @@ export async function resolveAutoCombo({
 
   // Mode: Custom selected models list
   if (mode === "custom" && Array.isArray(autoConfig.customModels) && autoConfig.customModels.length > 0) {
+    const customModels = await filterModels(autoConfig.customModels, "custom");
+    if (customModels.length === 0) {
+      return {
+        models: [],
+        strategy: strategyOverride || "context-relay",
+        variant,
+        isAuto: true,
+        noEligibleTargets: true,
+        reason: "no-eligible-custom-models",
+      };
+    }
     return {
-      models: autoConfig.customModels,
+      models: customModels,
       strategy: strategyOverride || "context-relay",
       variant,
       isAuto: true,
@@ -113,10 +144,13 @@ export async function resolveAutoCombo({
     if (!provider) continue;
 
     const defaultModel = conn.defaultModel;
-    if (defaultModel) {
-      candidates.push(defaultModel.includes("/") ? defaultModel : `${provider}/${defaultModel}`);
-    } else {
-      candidates.push(`${provider}/default`);
+    // A connection without an explicit model cannot produce an executable
+    // target; keep the no-candidate result typed instead of inventing a model.
+    if (!defaultModel) continue;
+    const candidate = defaultModel.includes("/") ? defaultModel : `${provider}/${defaultModel}`;
+    const [eligibleCandidate] = await filterModels([candidate], "connection", conn);
+    if (eligibleCandidate) {
+      candidates.push(candidate);
     }
   }
 

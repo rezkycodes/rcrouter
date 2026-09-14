@@ -81,6 +81,15 @@ RcRouter supports 6 specialized strategies per combo:
 | **`round-robin`** | Sequential cyclic rotation across all healthy targets | Distributing uniform load across accounts |
 | **`fusion`** | Queries all candidates in parallel; judge model synthesizes one optimal answer | Highest possible reasoning and code quality |
 
+### Auto Combo policies
+
+The virtual `auto`, `auto/coding`, `auto/fast`, `auto/cheap`, and
+`auto/reasoning` models apply their policy only after candidate validation.
+Disabled connections, model locks, cached quota exhaustion, circuit-breaker
+cooldowns, and API-key ACL denials are excluded before routing. If no eligible
+target remains, the API returns `503 No eligible models available for auto
+combo`; it never sends the synthetic `auto/fallback` model upstream.
+
 ---
 
 ## 🔒 Tri-State Multi-Tenant Access Control (ACL)
