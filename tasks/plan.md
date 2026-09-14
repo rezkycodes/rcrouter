@@ -4,7 +4,14 @@
 
 Build RcRouter as a durable RouterProxy distribution: retain the current 9router-compatible core, selectively adopt proven VansRouter operational features, and avoid importing OmniRoute as a second platform. The immediate priority is correctness of account/session routing; new providers and broad auto-routing come after that foundation is reliable.
 
-This plan is based on the current RcRouter fork at `c9bdec38`, whose merge-base is the latest local 9router core (`17c4cc76`). It is a plan only; no production behaviour is changed by this document.
+This plan started from the RcRouter fork at `c9bdec38`, whose merge-base was the local 9router core (`17c4cc76`). It is now a live implementation tracker; completed items below refer to commits on the project-owned `main` branch.
+
+## Latest implementation status
+
+- Foundation, project-owned GitHub publication, Context Relay account affinity, connection caching, and account semaphore are implemented and covered by the quality gate.
+- Auto Combo now filters caller-supplied ACL/health/quota state and returns a typed no-candidate result instead of `auto/fallback` (`5a0eee86`).
+- The first protocol-fidelity slice is complete (`08c5211f`); the full translator backlog still contains seven explicit expected failures.
+- Verification on 2026-09-14: `pnpm check` passed against the reviewed baseline (98 current failures vs 101 baseline, 3 resolved), and `pnpm run build` completed successfully.
 
 ## Verified starting point
 
