@@ -189,14 +189,20 @@ function getEnvProxyUrl(targetUrl) {
 function normalizeProxyUrl(proxyUrl) {
   const normalizedInput = normalizeString(proxyUrl);
   if (!normalizedInput) return null;
+  if (/[\n\r`$]/.test(normalizedInput)) return null;
 
   try {
-
-    new URL(normalizedInput);
-    return normalizedInput;
+    const parsed = new URL(normalizedInput);
+    if (!["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"].includes(parsed.protocol)) return null;
+    return parsed.href;
   } catch {
     // Allow "127.0.0.1:7890" style values
-    return `http://${normalizedInput}`;
+    try {
+      const parsed = new URL(`http://${normalizedInput}`);
+      return parsed.hostname ? parsed.href : null;
+    } catch {
+      return null;
+    }
   }
 }
 

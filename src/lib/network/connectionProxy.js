@@ -6,6 +6,29 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+const ALLOWED_PROXY_SCHEMES = new Set([
+  "http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"
+]);
+
+/**
+ * Validate proxy/relay endpoints before they reach ProxyAgent or fetch.
+ * Admin-entered proxy URLs are still an outbound trust boundary: malformed
+ * schemes and control characters must never be handed to a network client.
+ */
+export function validateConnectionProxyUrl(value, { relay = false } = {}) {
+  const raw = normalizeString(value);
+  if (!raw || /[\n\r`$]/.test(raw)) return "";
+  const candidate = raw.includes("://") ? raw : (relay ? raw : `http://${raw}`);
+  try {
+    const parsed = new URL(candidate);
+    const allowed = relay ? (parsed.protocol === "http:" || parsed.protocol === "https:") : ALLOWED_PROXY_SCHEMES.has(parsed.protocol);
+    if (!allowed || !parsed.hostname) return "";
+    return parsed.href;
+  } catch {
+    return "";
+  }
+}
+
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
 const rotateState = new Map(); // providerId → { index }
 
@@ -37,12 +60,8 @@ export function pickProxyPoolId(poolIds, strategy, providerId) {
  * Normalize legacy proxy configuration.
  */
 function normalizeLegacyProxy(providerSpecificData = {}) {
-  const connectionProxyEnabled =
-    providerSpecificData?.connectionProxyEnabled === true;
-
-  const connectionProxyUrl = normalizeString(
-    providerSpecificData?.connectionProxyUrl
-  );
+  const connectionProxyUrl = validateConnectionProxyUrl(providerSpecificData?.connectionProxyUrl);
+  const connectionProxyEnabled = providerSpecificData?.connectionProxyEnabled === true && !!connectionProxyUrl;
 
   const connectionNoProxy = normalizeString(
     providerSpecificData?.connectionNoProxy
@@ -85,7 +104,8 @@ export async function resolveConnectionProxyConfig(
     if (proxyPoolId) {
       const proxyPool = await getProxyPoolById(proxyPoolId);
 
-      const proxyUrl = normalizeString(proxyPool?.proxyUrl);
+      const isRelay = proxyPool?.type === "vercel" || proxyPool?.type === "cloudflare" || proxyPool?.type === "deno";
+      const proxyUrl = validateConnectionProxyUrl(proxyPool?.proxyUrl, { relay: isRelay });
       const noProxy = normalizeString(proxyPool?.noProxy);
 
       const isValidPool =
@@ -98,7 +118,7 @@ export async function resolveConnectionProxyConfig(
          * Vercel/Cloudflare relay proxies use base URL rewriting
          * instead of HTTP_PROXY environment variables.
          */
-        if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno") {
+        if (isRelay) {
           return {
             source: proxyPool.type,
 
