@@ -1,3 +1,34 @@
+# v1.0.0 (2026-09-15)
+
+RcRouter first standalone release, based on the 9router v0.5.75 core and
+extended with session-aware routing and operational safeguards.
+
+## Highlights
+
+- Context Relay affinity with tenant isolation, bounded TTL/LRU storage, and
+  success-only account pinning.
+- Auto Combo eligibility checks, per-account concurrency limits, circuit
+  breakers, connection caching, and privacy-safe operational metrics.
+- Tri-state API-key ACLs, proxy destination validation, credential-safe logs,
+  LoopGuard, Ponytail/Caveman/RTK token savers, and Cloud Worker embeddings.
+- Fail-closed translator compatibility gates with typed HTTP 422 responses for
+  unsupported payloads instead of silently dropping data.
+- Reproducible quality, migration, staged-health, Cloud Worker, and container
+  smoke checks in CI.
+
+## Verification
+
+- Quality workflow `34838923519` passed test/lint/build, migration drill,
+  Cloud Worker smoke/bundle, and strict container liveness checks.
+- Six semantic translator fixtures remain explicit expected failures until
+  lossless destination schemas are available.
+
+## Operational prerequisites
+
+- Deploy a pinned image digest to staging and observe one release window.
+- Approve and provision the credential master-key lifecycle before encryption
+  migration.
+
 # v0.5.75 (2026-09-10)
 
 ## Features
