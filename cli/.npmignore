@@ -7,3 +7,6 @@
 !README.md
 !LICENSE
 
+# Never publish build-machine state or generated webpack caches.
+app/.fakehome/
+app/.next-cli-build/cache/

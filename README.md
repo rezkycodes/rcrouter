@@ -133,6 +133,16 @@ Reduce upstream token usage without modifying client code:
 
 ## ⚡ Quick Start
 
+### Install the global CLI (npm)
+
+```bash
+npm install -g rcrouter
+rcrouter
+```
+
+The CLI bundles the production server and opens the dashboard at
+`http://localhost:20128`. Use `rcrouter --no-browser` on headless machines.
+
 ### 1. Run from Source (Recommended for Local Dev)
 
 ```bash

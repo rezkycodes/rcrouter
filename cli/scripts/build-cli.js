@@ -130,6 +130,16 @@ function mergeServerArtifacts(buildDistDir, cliAppDir) {
   copyRecursive(serverSrc, serverDest);
 }
 
+// Next.js tracing can copy the isolated build HOME into the standalone tree.
+// It contains only build-time state (including a temporary SQLite database and
+// secrets) and must never be shipped to npm consumers.
+function removeBuildMachineState(cliAppDir) {
+  for (const relativePath of [".fakehome", ".next-cli-build/cache"]) {
+    const target = path.join(cliAppDir, relativePath);
+    if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
 function assertRequiredApiArtifacts(cliAppDir) {
   const requiredArtifacts = [
     "app/api/v1/chat/completions/route.js",
@@ -297,6 +307,7 @@ function buildCliPackage() {
   console.log("6️⃣ b Copying complete server artifacts...");
   mergeServerArtifacts(buildDistDir, cliAppDir);
   assertRequiredApiArtifacts(cliAppDir);
+  removeBuildMachineState(cliAppDir);
   console.log("✅ Copied complete server artifacts\n");
 
   // Step 7: Copy MITM server files (not bundled by Next.js standalone)
@@ -347,6 +358,7 @@ module.exports = {
   assertRequiredApiArtifacts,
   copyStandaloneBuild,
   mergeServerArtifacts,
+  removeBuildMachineState,
 };
 
 if (require.main === module) {

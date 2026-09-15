@@ -1,7 +1,7 @@
 {
   "name": "rcrouter",
-  "version": "0.5.75",
-  "description": "RcRouter CLI - Start and manage RcRouter server",
+  "version": "1.0.0",
+  "description": "RcRouter CLI - Local AI model proxy gateway",
   "bin": {
     "rcrouter": "./cli.js"
   },
@@ -13,6 +13,15 @@
     "README.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/rezkycodes/rcrouter.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/rezkycodes/rcrouter#readme",
+  "bugs": {
+    "url": "https://github.com/rezkycodes/rcrouter/issues"
+  },
   "scripts": {
     "dev": "nodemon -I --watch cli.js --watch src --watch hooks --ext js,json cli.js",
     "build": "node scripts/build-cli.js",
@@ -34,6 +43,7 @@
     "node": ">=18.0.0"
   },
   "keywords": [
+    "rcrouter",
     "9router",
     "cli",
     "proxy",
