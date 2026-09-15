@@ -37,10 +37,15 @@
 
 ## ⚡ Quick Start
 
-**Option 1 — npm (recommended for desktop):**
+**Option 1 — npm or pnpm (recommended for desktop):**
 
 ```bash
+# npm
 npm install -g rcrouter
+
+# pnpm
+pnpm i -g rcrouter
+
 rcrouter
 
 # Or run directly with npx

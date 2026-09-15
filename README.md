@@ -133,10 +133,15 @@ Reduce upstream token usage without modifying client code:
 
 ## ⚡ Quick Start
 
-### Install the global CLI (npm)
+### Install the global CLI (npm or pnpm)
 
 ```bash
+# npm
 npm install -g rcrouter
+
+# pnpm
+pnpm i -g rcrouter
+
 rcrouter
 ```
 
