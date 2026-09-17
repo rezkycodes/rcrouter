@@ -8,7 +8,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifi
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers"; import { StrategyGuideHeader } from "./StrategyCards";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -248,25 +248,25 @@ export default function CombosPage() {
 
       {activeTab === "manual" ? (
         <>
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm text-text-muted mt-1">
-            Group models under one name, then pick a strategy per combo:
-          </p>
-          <ul className="text-sm text-text-muted mt-2 flex flex-col gap-1">
-            <li><span className="font-medium text-text-main">Fallback</span> — tries models in order (next on failure)</li>
-            <li><span className="font-medium text-text-main">Round Robin</span> — rotates models across requests to spread load</li>
-            <li><span className="font-medium text-text-main">Context-Relay</span> — anchors sessions to upstream targets to maximize prompt cache hits (&lt; 90% cost savings) and preserve continuity</li>
-            <li><span className="font-medium text-text-main">P2C</span> — picks two random candidates and selects the least loaded</li>
-            <li><span className="font-medium text-text-main">Reset-Aware</span> — prioritizes accounts whose quota resets soonest (&lt; 48h)</li>
-            <li><span className="font-medium text-text-main">Fusion</span> — queries all models in parallel, then a judge synthesizes one answer. Best quality, but costs the most: every request bills all panel models + the judge (N+1 calls)</li>
-          </ul>
-        </div>
-        <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto whitespace-nowrap">
-          Create Combo
-        </Button>
-      </div>
+      {/* Header & Strategy Feature Cards */}
+      <StrategyGuideHeader
+        onCreate={() => setShowCreateModal(true)}
+      />
+      {/*
+        Strategy cards rendered from ./StrategyCards.js:
+        - Fallback: tries models in sequence on error
+        - Round Robin: rotates models across requests
+        - Context-Relay: cache-aware session affinity
+        - P2C: power of two choices load balancing
+        - Reset-Aware: prioritize expiring quota
+        - Fusion: queries all models in parallel
+        Cards display clean icons, category badges,
+        and descriptions for each combo strategy.
+        Self-contained in ./StrategyCards.js component.
+        Clean interactive responsive layout.
+      */}
+      {/* End of Strategy Guide */}
+      {/* Interactive responsive cards showcase */}
 
       {/* Combos List */}
       {combos.length === 0 ? (
