@@ -1035,8 +1035,8 @@ function AutoComboSection({ autoComboConfig = {}, onSave, combos = [], saving, s
                         <code className="font-mono text-sm font-semibold text-primary">{route.name}</code>
                         <button
                           type="button"
-                          onClick={() => onCopy(route.name)}
-                          className="text-text-muted hover:text-text-main transition-colors text-xs"
+                          onClick={(e) => { e.stopPropagation(); onCopy(route.name, route.name); }}
+                          className={`transition-colors text-xs ${copied === route.name ? "text-primary" : "text-text-muted hover:text-text-main"}`}
                           title="Copy model ID"
                         >
                           <span className="material-symbols-outlined text-[14px]">
