@@ -1,6 +1,6 @@
 {
   "name": "rcrouter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "RcRouter CLI - Local AI model proxy gateway",
   "bin": {
     "rcrouter": "./cli.js"

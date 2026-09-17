@@ -614,6 +614,21 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "freebuff":
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([modelKey, quota]) => {
+            normalizedQuotas.push({
+              name: quota.displayName || modelKey,
+              modelKey,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              recurring: quota.recurring !== false,
+            });
+          });
+        }
+        break;
+
       case "groq":
         // Requests/Tokens rate-limit windows from response headers — absolute
         // used/total (calculatePercentage derives the bar), like Codex/Kiro.

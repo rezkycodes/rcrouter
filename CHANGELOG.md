@@ -1,3 +1,19 @@
+# v1.0.1 (2026-09-15)
+
+## Features
+- **Freebuff Provider**: integrate full Freebuff model catalog (GLM 5.3 Flash, DeepSeek V4.1 Flash, MiMo 2.5, Solar Pro 4, DeepSeek V4 Pro, GPT-5.6 Luna, MiniMax M3, Kimi K2.6, Muse Spark 1.2/1.3, Gemini 3.1 Flash Lite / 3.8 Flash).
+- **Freebuff Auto-Unlock Session**: add automatic session release (`DELETE /api/v1/freebuff/session`) on model switch to prevent 409 `model_locked` restrictions.
+- **SmartBind Proxy Pools**: multi-proxy pool binding and dynamic rotation strategies (`smart`, `round-robin`, `fill-first`, `random`) with automatic pool fitness tracking and fail-closed egress safety.
+- **Bulk Proxy Modal**: redesign Apply Proxy modal with Dynamic Strategies and Static Assignment sections matching VansRouter.
+- **Claude Code**: drive auto-compact window and 1M-context toggle.
+- **Xiaomi MiMo**: dual-auth support with Desktop OAuth flow and Cloud API key.
+
+## Fixes
+- **Providers API**: fix `PUT /api/providers/[id]` ignoring `assignedModel` / `freebuffModel` sent by model assignment dropdown.
+- **UI Overflow**: fix dropdown clipping in connection rows by removing restrictive `overflow-y-auto` from the connections list container.
+- **Fitness Scoping**: eliminate false `limited_ip` cooldowns caused by rate-limiting messages in session mismatches.
+- **Upstream Model Normalization**: transparently map `upstage/solar-pro-4` -> `upstage/solar-pro4` and `deepseek-v4.1-flash` -> `deepseek-v4-flash`.
+
 # v1.0.0 (2026-09-15)
 
 RcRouter first standalone release, based on the 9router v0.5.75 core and

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import dns from "node:dns";
 
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { buildSearchRequest } from "../../open-sse/handlers/search/callers.js";
@@ -130,6 +131,7 @@ describe("Xquik search provider", () => {
   });
 
   it("reports Xquik credits without claiming an unknown USD cost", async () => {
+    vi.spyOn(dns.promises, "lookup").mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(RESPONSE), {
       status: 200,
       headers: { "Content-Type": "application/json" },

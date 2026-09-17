@@ -20,6 +20,18 @@ function getProviderMutex(providerKey) {
   return _providerMutexes.get(providerKey);
 }
 
+export function filterConnectionsForModel(providerId, connections, model, settings = {}) {
+  const override = (settings.providerStrategies || {})[providerId] || {};
+  if (providerId !== "freebuff" || override.strictModelAssignment !== true || !model) return connections;
+  return connections.filter((connection) => {
+    const data = connection.providerSpecificData || {};
+    const assignedModel = Object.prototype.hasOwnProperty.call(data, "assignedModel")
+      ? data.assignedModel
+      : (providerId === "freebuff" ? data.freebuffModel : null);
+    return assignedModel === model;
+  });
+}
+
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 
 function githubMonthlyResetMs(status, errorText, provider) {
@@ -79,7 +91,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    let connections = await getProviderConnections({ provider: providerId, isActive: true });
+    const settings = await getSettings();
+    connections = filterConnectionsForModel(providerId, connections, model, settings);
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
@@ -143,7 +157,6 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
-    const settings = await getSettings();
     // Per-provider strategy overrides global setting
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
@@ -202,7 +215,29 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       connection = availableConnections[0];
     }
 
-    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+    let psdForProxy = { ...(connection.providerSpecificData || {}) };
+    if (providerId === "freebuff") {
+      psdForProxy.proxyPoolScope = `${providerId}::${model || ""}`;
+      if (!psdForProxy.proxyPoolId && !psdForProxy.proxyPoolIds?.length) {
+        const providerOverride = (settings.providerStrategies || {})[providerId] || {};
+        if (providerOverride.proxyPoolIds?.length) {
+          psdForProxy.proxyPoolIds = providerOverride.proxyPoolIds;
+          psdForProxy.proxyRotationStrategy = providerOverride.proxyRotationStrategy || "smart";
+        } else if (providerOverride.proxyPoolId) {
+          psdForProxy.proxyPoolId = providerOverride.proxyPoolId;
+        } else {
+          const allPools = await getProxyPools({ isActive: true });
+          const activePoolIds = allPools.filter((p) => p.proxyUrl).map((p) => p.id);
+          if (activePoolIds.length > 0) {
+            psdForProxy.proxyPoolIds = activePoolIds;
+            psdForProxy.proxyRotationStrategy = "smart";
+          }
+        }
+      }
+    } else if (connection.providerSpecificData?.proxyPoolIds?.length) {
+      psdForProxy.proxyPoolScope = `${providerId}::${model || ""}`;
+    }
+    const resolvedProxy = await resolveConnectionProxyConfig(psdForProxy || {});
 
     return {
       authType: connection.authType,
@@ -223,6 +258,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         connectionNoProxy: resolvedProxy.connectionNoProxy,
         connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
         vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        proxyPoolId: resolvedProxy.proxyPoolId || null,
+        noFitPool: resolvedProxy.noFitPool === true,
+        strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
       // Include current status for optimization check

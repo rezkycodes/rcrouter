@@ -12,11 +12,15 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((pool) => [pool.id, pool]));
-  const boundProxyPoolId = connection.providerSpecificData?.proxyPoolId || null;
+  const selectedProxyIds = connection.providerSpecificData?.proxyPoolIds || (connection.providerSpecificData?.proxyPoolId ? [connection.providerSpecificData.proxyPoolId] : []);
+  const rotationStrategy = connection.providerSpecificData?.proxyRotationStrategy || "none";
+  const boundProxyPoolId = selectedProxyIds[0] || connection.providerSpecificData?.proxyPoolId || null;
   const boundProxyPool = boundProxyPoolId ? proxyPoolMap.get(boundProxyPoolId) : null;
   const hasLegacyProxy = connection.providerSpecificData?.connectionProxyEnabled === true && !!connection.providerSpecificData?.connectionProxyUrl;
   const hasAnyProxy = !!boundProxyPoolId || hasLegacyProxy;
-  const proxyDisplayText = boundProxyPool
+  const proxyDisplayText = selectedProxyIds.length > 1
+    ? `${selectedProxyIds.length} pools (${rotationStrategy})`
+    : boundProxyPool
     ? `Pool: ${boundProxyPool.name}`
     : boundProxyPoolId
       ? `Pool: ${boundProxyPoolId} (inactive/missing)`
@@ -62,10 +66,26 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   const handleSelectProxy = async (poolId) => {
     setUpdatingProxy(true);
     try {
-      await onUpdateProxy(poolId === "__none__" ? null : poolId);
+      if (poolId === "__none__") {
+        await onUpdateProxy(null);
+      } else {
+        await onUpdateProxy(poolId);
+      }
+      setShowProxyDropdown(false);
     } finally {
       setUpdatingProxy(false);
+    }
+  };
+
+  const handleAdvancedProxy = async (strategy, ids) => {
+    const activeIds = ids.filter((id) => proxyPoolMap.get(id)?.isActive === true);
+    if (!activeIds.length) return;
+    setUpdatingProxy(true);
+    try {
+      await onUpdateProxy({ proxyPoolIds: activeIds, proxyRotationStrategy: strategy });
       setShowProxyDropdown(false);
+    } finally {
+      setUpdatingProxy(false);
     }
   };
 
@@ -214,8 +234,9 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
         <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
           {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
-            <div className="relative" ref={proxyDropdownRef}>
+            <div className={`relative ${showProxyDropdown ? "z-50" : ""}`} ref={proxyDropdownRef}>
               <button
+                type="button"
                 onClick={() => setShowProxyDropdown((v) => !v)}
                 className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
                 disabled={updatingProxy}
@@ -226,18 +247,33 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 <span className="text-[10px] leading-tight">Proxy</span>
               </button>
               {showProxyDropdown && (
-                <div className="absolute right-0 top-full z-50 mt-1 max-w-[78vw] min-w-[160px] rounded-lg border border-border bg-bg py-1 shadow-lg">
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] max-w-[85vw] max-h-[360px] overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-2xl">
                   <button
                     onClick={() => handleSelectProxy("__none__")}
                     className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
                   >
                     None
                   </button>
+                  <p className="px-3 pt-2 text-[10px] font-medium uppercase text-text-muted">Rotation</p>
+                  {["fill-first", "round-robin", "random", "smart"].map((strategy) => (
+                    <button
+                      type="button"
+                      key={strategy}
+                      onClick={() => handleAdvancedProxy(strategy, selectedProxyIds.length > 1 ? selectedProxyIds : (proxyPools || []).filter((pool) => pool.isActive).map((pool) => pool.id))}
+                      disabled={updatingProxy}
+                      className={`w-full px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${rotationStrategy === strategy ? "font-medium text-primary" : "text-text-main"}`}
+                    >
+                      {strategy === "smart" ? "Smart (provider/model aware)" : strategy}
+                    </button>
+                  ))}
+                  <p className="px-3 pt-2 text-[10px] font-medium uppercase text-text-muted">Single pool</p>
                   {(proxyPools || []).map((pool) => (
                     <button
+                      type="button"
                       key={pool.id}
                       onClick={() => handleSelectProxy(pool.id)}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
+                      disabled={updatingProxy || pool.isActive !== true}
+                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id && selectedProxyIds.length <= 1 ? "text-primary font-medium" : "text-text-main"}`}
                     >
                       {pool.name}
                     </button>

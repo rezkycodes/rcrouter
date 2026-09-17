@@ -33,30 +33,47 @@ function normalizeProxyConfig(body = {}) {
   };
 }
 
-async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
+async function normalizeProxyPoolUpdate(body = {}) {
+  if (Object.prototype.hasOwnProperty.call(body, "proxyPoolIds")) {
+    const rawIds = body.proxyPoolIds;
+    const strategy = String(body.proxyRotationStrategy || "").trim().toLowerCase();
+    const allowed = new Set(["fill-first", "round-robin", "random", "smart"]);
+    const proxyRotationStrategy = allowed.has(strategy) ? strategy : "fill-first";
+    const proxyPoolIds = Array.isArray(rawIds)
+      ? [...new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean))]
+      : [];
+    for (const proxyPoolId of proxyPoolIds) {
+      if (!await getProxyPoolById(proxyPoolId)) {
+        return { hasProxyPoolField: true, error: "Proxy pool not found" };
+      }
+    }
+    return {
+      hasProxyPoolField: true,
+      proxyPoolId: null,
+      proxyPoolIds,
+      proxyRotationStrategy,
+    };
+  }
+
+  const proxyPoolIdInput = body?.proxyPoolId;
   if (proxyPoolIdInput === undefined) {
     return { hasProxyPoolField: false, proxyPoolId: null };
   }
 
   if (proxyPoolIdInput === null || proxyPoolIdInput === "" || proxyPoolIdInput === "__none__") {
-    return { hasProxyPoolField: true, proxyPoolId: null };
+    return { hasProxyPoolField: true, proxyPoolId: null, proxyPoolIds: [] };
   }
 
   const proxyPoolId = String(proxyPoolIdInput).trim();
-  if (!proxyPoolId) {
-    return { hasProxyPoolField: true, proxyPoolId: null };
-  }
-
-  const proxyPool = await getProxyPoolById(proxyPoolId);
-  if (!proxyPool) {
+  if (!proxyPoolId) return { hasProxyPoolField: true, proxyPoolId: null, proxyPoolIds: [] };
+  if (!await getProxyPoolById(proxyPoolId)) {
     return { hasProxyPoolField: true, error: "Proxy pool not found" };
   }
-
-  return { hasProxyPoolField: true, proxyPoolId };
+  return { hasProxyPoolField: true, proxyPoolId, proxyPoolIds: [] };
 }
 
-function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField) {
-  return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField;
+function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, hasProxyPoolField, body = {}) {
+  return existing !== undefined || incoming !== undefined || hasLegacyProxy || hasProxyPoolField || body.assignedModel !== undefined || body.freebuffModel !== undefined;
 }
 
 // GET /api/providers/[id] - Get single connection
@@ -111,7 +128,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
     }
 
-    const proxyPoolResult = await normalizeProxyPoolUpdate(body.proxyPoolId);
+    const proxyPoolResult = await normalizeProxyPoolUpdate(body);
     if (proxyPoolResult.error) {
       return NextResponse.json({ error: proxyPoolResult.error }, { status: 400 });
     }
@@ -132,7 +149,8 @@ export async function PUT(request, { params }) {
         existing.providerSpecificData,
         providerSpecificData,
         proxyConfig.hasAnyProxyField,
-        proxyPoolResult.hasProxyPoolField
+        proxyPoolResult.hasProxyPoolField,
+        body
       )
     ) {
       updateData.providerSpecificData = {
@@ -152,6 +170,19 @@ export async function PUT(request, { params }) {
         } else {
           updateData.providerSpecificData.proxyPoolId = proxyPoolResult.proxyPoolId;
         }
+        if (proxyPoolResult.proxyPoolIds?.length) {
+          updateData.providerSpecificData.proxyPoolIds = proxyPoolResult.proxyPoolIds;
+          updateData.providerSpecificData.proxyRotationStrategy = proxyPoolResult.proxyRotationStrategy;
+        } else {
+          delete updateData.providerSpecificData.proxyPoolIds;
+          delete updateData.providerSpecificData.proxyRotationStrategy;
+        }
+      }
+
+      if (body.assignedModel !== undefined || body.freebuffModel !== undefined) {
+        const assigned = body.assignedModel !== undefined ? body.assignedModel : body.freebuffModel;
+        updateData.providerSpecificData.assignedModel = assigned || null;
+        updateData.providerSpecificData.freebuffModel = assigned || null;
       }
     }
 

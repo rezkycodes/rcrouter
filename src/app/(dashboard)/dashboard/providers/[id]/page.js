@@ -927,15 +927,12 @@ export default function ProviderDetailPage() {
   }, [connections]);
 
   const selectedProxySummary = (() => {
-    if (selectedConnections.length === 0) return "";
-    const poolIds = new Set(selectedConnections.map((conn) => conn.providerSpecificData?.proxyPoolId || "__none__"));
-    if (poolIds.size === 1) {
-      const onlyId = [...poolIds][0];
-      if (onlyId === "__none__") return "All selected currently unbound";
-      const pool = proxyPools.find((p) => p.id === onlyId);
-      return `All selected currently bound to ${pool?.name || onlyId}`;
-    }
-    return "Selected connections have mixed proxy bindings";
+    const targets = selectedConnectionIds.length > 0 ? selectedConnections : connections;
+    if (!targets.length) return null;
+    const withPool = targets.filter((c) => c.providerSpecificData?.proxyPoolId || c.providerSpecificData?.proxyPoolIds?.length);
+    if (!withPool.length) return "All target connections currently use direct routing (no proxy).";
+    if (withPool.length === targets.length) return `All ${targets.length} target connections have proxy pools assigned.`;
+    return `${withPool.length} of ${targets.length} target connections currently have proxy pools assigned.`;
   })();
 
   const openBulkProxyModal = () => {
@@ -954,12 +951,16 @@ export default function ProviderDetailPage() {
     setBulkUpdatingProxy(true);
     try {
       let failed = 0;
-      for (const { connectionId, proxyPoolId } of assignments) {
+      for (const { connectionId, proxyPoolId, proxyPoolIds, proxyRotationStrategy } of assignments) {
         try {
+          const body = proxyPoolIds
+            ? { proxyPoolIds, proxyRotationStrategy }
+            : { proxyPoolId };
+
           const res = await fetch(`/api/providers/${connectionId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ proxyPoolId }),
+            body: JSON.stringify(body),
           });
           if (!res.ok) failed += 1;
         } catch (e) {
@@ -970,13 +971,17 @@ export default function ProviderDetailPage() {
       if (failed > 0) alert(`Updated with ${failed} failed request(s).`);
       await fetchConnections();
       setShowBulkProxyModal(false);
+      clearSelection();
     } finally {
       setBulkUpdatingProxy(false);
     }
   };
 
   const handleApplySinglePool = (proxyPoolId) => {
-    const targets = connections.map((c) => ({ connectionId: c.id, proxyPoolId }));
+    const targets = (selectedConnectionIds.length > 0 ? selectedConnections : connections).map((c) => ({
+      connectionId: c.id,
+      proxyPoolId,
+    }));
     return applyProxyAssignments(targets);
   };
 
@@ -986,9 +991,23 @@ export default function ProviderDetailPage() {
       alert("No active proxy pools available.");
       return;
     }
-    const targets = connections.map((c, i) => ({
+    const targets = (selectedConnectionIds.length > 0 ? selectedConnections : connections).map((c, i) => ({
       connectionId: c.id,
       proxyPoolId: activePools[i % activePools.length].id,
+    }));
+    return applyProxyAssignments(targets);
+  };
+
+  const handleApplyAdvancedProxy = (strategy, ids) => {
+    const activeIds = ids.filter((id) => proxyPools.find(p => p.id === id)?.isActive === true);
+    if (!activeIds.length) {
+      alert("No active proxy pools selected.");
+      return;
+    }
+    const targets = (selectedConnectionIds.length > 0 ? selectedConnections : connections).map((c) => ({
+      connectionId: c.id,
+      proxyPoolIds: activeIds,
+      proxyRotationStrategy: strategy,
     }));
     return applyProxyAssignments(targets);
   };
@@ -997,7 +1016,7 @@ export default function ProviderDetailPage() {
   const isSelected = (connectionId) => selectedConnectionIds.includes(connectionId);
 
   const connectionsList = (
-    <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03] max-h-[500px] overflow-y-auto pr-1">
+    <div className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03]">
       {connections
         .map((conn, index) => (
           <div key={conn.id} className="flex min-w-0 items-stretch">
@@ -1024,18 +1043,33 @@ export default function ProviderDetailPage() {
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
                 } : null}
-                onUpdateProxy={async (proxyPoolId) => {
+                onUpdateProxy={async (proxySelection) => {
                   try {
+                    const body = typeof proxySelection === "object" && proxySelection !== null
+                      ? proxySelection
+                      : { proxyPoolId: proxySelection || null };
                     const res = await fetch(`/api/providers/${conn.id}`, {
                       method: "PUT",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),
+                      body: JSON.stringify(body),
                     });
                     if (res.ok) {
+                      const nextProviderSpecificData = { ...conn.providerSpecificData };
+                      if (body.proxyPoolIds) {
+                        nextProviderSpecificData.proxyPoolIds = body.proxyPoolIds;
+                        nextProviderSpecificData.proxyRotationStrategy = body.proxyRotationStrategy;
+                        delete nextProviderSpecificData.proxyPoolId;
+                      } else if (body.proxyPoolId) {
+                        nextProviderSpecificData.proxyPoolId = body.proxyPoolId;
+                        delete nextProviderSpecificData.proxyPoolIds;
+                        delete nextProviderSpecificData.proxyRotationStrategy;
+                      } else {
+                        delete nextProviderSpecificData.proxyPoolId;
+                        delete nextProviderSpecificData.proxyPoolIds;
+                        delete nextProviderSpecificData.proxyRotationStrategy;
+                      }
                       setConnections(prev => prev.map(c =>
-                        c.id === conn.id
-                          ? { ...c, providerSpecificData: { ...c.providerSpecificData, proxyPoolId: proxyPoolId || null } }
-                          : c
+                        c.id === conn.id ? { ...c, providerSpecificData: nextProviderSpecificData } : c
                       ));
                     }
                   } catch (error) {
@@ -1061,43 +1095,84 @@ export default function ProviderDetailPage() {
     <Modal
       isOpen={showBulkProxyModal}
       onClose={closeBulkProxyModal}
-      title={`Apply Proxy (${connections.length} connections)`}
+      title={selectedConnectionIds.length > 0 ? `Apply Proxy (${selectedConnectionIds.length} selected)` : `Apply Proxy (All ${connections.length} connections)`}
     >
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col">
-          <button
-            onClick={handleApplyOneToOne}
-            disabled={bulkUpdatingProxy || activePools.length === 0}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
-            <span className="text-sm text-text-main">One-to-one (rotate)</span>
-          </button>
-          <button
-            onClick={() => handleApplySinglePool(null)}
-            disabled={bulkUpdatingProxy}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
-            <span className="text-sm text-text-main">None (unbind all)</span>
-          </button>
-          {proxyPools.map((pool) => (
+      <div className="flex flex-col gap-4">
+        {selectedProxySummary && (
+          <p className="text-xs text-text-muted bg-surface-2 px-3 py-2 rounded-lg border border-border/50">
+            {selectedProxySummary}
+          </p>
+        )}
+        <div className="flex flex-col divide-y divide-border/30 border border-border/50 rounded-xl overflow-hidden bg-surface">
+          <div className="p-3 flex flex-col gap-1">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Dynamic Strategies</p>
             <button
-              key={pool.id}
-              onClick={() => handleApplySinglePool(pool.id)}
-              disabled={bulkUpdatingProxy || pool.isActive !== true}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={handleApplyOneToOne}
+              disabled={bulkUpdatingProxy || activePools.length === 0}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
-              <span className="truncate text-sm text-text-main">{pool.name}</span>
-              {pool.isActive !== true && (
-                <span className="text-[10px] text-text-muted">(inactive)</span>
-              )}
+              <span className="material-symbols-outlined text-text-muted text-[20px]">sync_alt</span>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-text-main">One-to-one (rotate)</span>
+                <span className="text-[10px] text-text-muted mt-0.5">Distribute active proxy pools round-robin</span>
+              </div>
             </button>
-          ))}
+            {["fill-first", "round-robin", "random", "smart"].map((strategy) => (
+              <button
+                type="button"
+                key={strategy}
+                onClick={() => handleApplyAdvancedProxy(strategy, activePools.map((p) => p.id))}
+                disabled={bulkUpdatingProxy || activePools.length === 0}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-text-muted text-[20px]">autorenew</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-text-main capitalize">{strategy} strategy</span>
+                  <span className="text-[10px] text-text-muted mt-0.5">
+                    {strategy === "smart" ? "Bypass pools marked unfit for provider/model" : `Rotate over all active pools using ${strategy}`}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="p-3 flex flex-col gap-1">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Static Assignment</p>
+            <button
+              type="button"
+              onClick={() => handleApplySinglePool(null)}
+              disabled={bulkUpdatingProxy}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-text-muted text-[20px]">link_off</span>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-text-main">None (unbind all)</span>
+                <span className="text-[10px] text-text-muted mt-0.5">Direct routing without proxy</span>
+              </div>
+            </button>
+            {proxyPools.map((pool) => (
+              <button
+                type="button"
+                key={pool.id}
+                onClick={() => handleApplySinglePool(pool.id)}
+                disabled={bulkUpdatingProxy || pool.isActive !== true}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-text-muted text-[20px]">lan</span>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="truncate text-sm font-medium text-text-main">{pool.name}</span>
+                  <span className="text-[10px] text-text-muted truncate mt-0.5">{pool.proxyUrl}</span>
+                </div>
+                {pool.isActive !== true && (
+                  <Badge variant="secondary" size="sm" className="ml-auto shrink-0">inactive</Badge>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {bulkUpdatingProxy && <p className="text-xs text-text-muted">Applying...</p>}
+        {bulkUpdatingProxy && <p className="text-xs text-text-muted animate-pulse px-1">Applying proxy configuration...</p>}
 
         <Button onClick={closeBulkProxyModal} variant="ghost" fullWidth disabled={bulkUpdatingProxy}>
           Cancel
