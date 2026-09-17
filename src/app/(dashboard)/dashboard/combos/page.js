@@ -8,7 +8,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifi
 import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModal, CapacityBadges, Select, Toggle } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers"; import { StrategyGuideHeader } from "./StrategyCards";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers"; import { StrategyGuideHeader } from "./StrategyCards"; import { translate } from "@/i18n/runtime";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -991,7 +991,7 @@ function AutoComboSection({ autoComboConfig = {}, onSave, combos = [], saving, s
   };
 
   const comboOptions = [
-    { value: "", label: "Select a manual combo..." },
+    { value: "", label: translate("Select a manual combo...") },
     ...combos.map((c) => ({ value: c.name, label: `${c.name} (${c.models?.length || 0} models)` })),
   ];
 
@@ -1044,7 +1044,7 @@ function AutoComboSection({ autoComboConfig = {}, onSave, combos = [], saving, s
                           </span>
                         </button>
                       </div>
-                      <p className="text-xs text-text-muted mt-0.5">{route.desc}</p>
+                      <p className="text-xs text-text-muted mt-0.5">{translate(route.desc)}</p>
                     </div>
                   </div>
                 </div>
@@ -1056,9 +1056,9 @@ function AutoComboSection({ autoComboConfig = {}, onSave, combos = [], saving, s
                     </label>
                     <Select
                       options={[
-                        { value: "auto", label: "Dynamic Auto (All Active Accounts)" },
-                        { value: "combo", label: "Link to Existing Manual Combo" },
-                        { value: "custom", label: "Custom Models List (Manual Selection)" },
+                        { value: "auto", label: translate("Dynamic Auto (All Active Accounts)") },
+                        { value: "combo", label: translate("Link to Existing Manual Combo") },
+                        { value: "custom", label: translate("Custom Models List (Manual Selection)") },
                       ]}
                       value={mode}
                       onChange={(e) => updateRoute(route.key, "mode", e.target.value)}
@@ -1071,7 +1071,7 @@ function AutoComboSection({ autoComboConfig = {}, onSave, combos = [], saving, s
                       Load Strategy
                     </label>
                     <Select
-                      options={STRATEGY_OPTIONS}
+                      options={STRATEGY_OPTIONS.map((opt) => ({ ...opt, label: translate(opt.label) }))}
                       value={strategy}
                       onChange={(e) => updateRoute(route.key, "strategy", e.target.value)}
                       selectClassName="py-1 text-xs"

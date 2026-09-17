@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/shared/components";
+import { translate } from "@/i18n/runtime";
 
 export const STRATEGY_CARDS = [
   {
@@ -24,7 +25,7 @@ export const STRATEGY_CARDS = [
   {
     key: "context-relay",
     name: "Context-Relay",
-    badge: "Cache & Speed",
+    badge: "Cache & Continuity",
     badgeColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
     icon: "bolt",
     iconColor: "text-emerald-500 bg-emerald-500/10",
@@ -51,7 +52,7 @@ export const STRATEGY_CARDS = [
   {
     key: "fusion",
     name: "Fusion",
-    badge: "Max Quality",
+    badge: "Highest Quality",
     badgeColor: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20",
     icon: "hub",
     iconColor: "text-pink-500 bg-pink-500/10",
@@ -67,10 +68,10 @@ export function StrategyGuideHeader({ onCreate }) {
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-text-main flex items-center gap-2">
             <span className="material-symbols-outlined text-primary text-[20px]">alt_route</span>
-            Routing Strategies
+            {translate("Routing Strategies")}
           </h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Group models under one unified name, then choose an execution strategy to automate routing:
+            {translate("Group models under one unified name, then choose an execution strategy to automate routing:")}
           </p>
         </div>
         <Button
@@ -78,7 +79,7 @@ export function StrategyGuideHeader({ onCreate }) {
           onClick={onCreate}
           className="w-full sm:w-auto whitespace-nowrap shrink-0 shadow-sm"
         >
-          Create Combo
+          {translate("Create Combo")}
         </Button>
       </div>
 
@@ -95,11 +96,11 @@ export function StrategyGuideHeader({ onCreate }) {
                   <span className="material-symbols-outlined text-[18px]">{strat.icon}</span>
                 </div>
                 <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${strat.badgeColor}`}>
-                  {strat.badge}
+                  {translate(strat.badge)}
                 </span>
               </div>
-              <h3 className="text-sm font-semibold text-text-main">{strat.name}</h3>
-              <p className="text-xs text-text-muted mt-1 leading-relaxed">{strat.desc}</p>
+              <h3 className="text-sm font-semibold text-text-main">{translate(strat.name)}</h3>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">{translate(strat.desc)}</p>
             </div>
           </div>
         ))}
