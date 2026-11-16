@@ -231,6 +231,15 @@ export function isSemaphoreCapacityError(error) {
 }
 
 /**
+ * Dashboard "Guards & Shields" switch. On unless the setting is explicitly
+ * false/0 (same rule as the circuit breaker and loop guard settings).
+ * @param {object} [settings]
+ */
+export function isAccountSemaphoreEnabled(settings) {
+  return settings?.semaphoreEnabled !== false && settings?.semaphoreEnabled !== 0;
+}
+
+/**
  * Resolve the semaphore key from request context.
  * Returns null if no concurrency limit is configured.
  * @param {object} params

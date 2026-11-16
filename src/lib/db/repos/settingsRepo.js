@@ -65,6 +65,8 @@ const DEFAULT_SETTINGS = {
   // Keep loop protection on by default; operators can opt out for providers
   // whose multimodal/tool traces intentionally repeat context.
   loopGuardEnabled: true,
+  circuitBreakerEnabled: true,
+  semaphoreEnabled: true,
 };
 
 async function readRaw() {

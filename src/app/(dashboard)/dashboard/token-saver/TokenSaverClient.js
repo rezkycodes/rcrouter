@@ -10,6 +10,25 @@ import {
   PONYTAIL_LEVELS,
 } from "../endpoint/endpointConstants";
 
+// Request-path guards. Each `key` maps to a `<key>Enabled` setting (loopGuardEnabled, ...), on by default.
+const GUARDS = [
+  {
+    key: "loopGuard",
+    title: "Loop Guard",
+    description: "Detects repeating tool call sequences and text-only planning loops. Injects corrections to prevent infinite agent run-loops.",
+  },
+  {
+    key: "circuitBreaker",
+    title: "Circuit Breaker",
+    description: "Temporarily halts upstream calls for offline or failing providers to prevent spamming and conserve connection resource.",
+  },
+  {
+    key: "semaphore",
+    title: "Semaphore (Concurrency Limiter)",
+    description: "Enforces simultaneous request limits per provider account. Prevents rate-limits (429) and account blockings.",
+  },
+];
+
 export default function TokenSaverClient() {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
@@ -58,6 +77,7 @@ export default function TokenSaverClient() {
   const [showPxpipeModal, setShowPxpipeModal] = useState(false);
   const [pxpipeActionLoading, setPxpipeActionLoading] = useState(false);
   const [pxpipeActionError, setPxpipeActionError] = useState("");
+  const [guards, setGuards] = useState({ loopGuard: true, circuitBreaker: true, semaphore: true });
   const [locale, setLocale] = useState(() => getCurrentLocale());
 
   const { copied, copy } = useCopyToClipboard();
@@ -403,6 +423,11 @@ export default function TokenSaverClient() {
     patchSetting({ pxpipeEnabled: value });
   };
 
+  const updateGuard = (key, value) => {
+    setGuards((prev) => ({ ...prev, [key]: value }));
+    patchSetting({ [`${key}Enabled`]: value });
+  };
+
   const handlePxpipeMinCharsBlur = () => {
     const next = Math.max(0, Number(pxpipeMinChars) || 25000);
     setPxpipeMinChars(next);
@@ -434,6 +459,11 @@ export default function TokenSaverClient() {
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
           if (typeof data.pxpipeMinChars === "number") setPxpipeMinChars(data.pxpipeMinChars);
+          setGuards({
+            loopGuard: data.loopGuardEnabled !== false,
+            circuitBreaker: data.circuitBreakerEnabled !== false,
+            semaphore: data.semaphoreEnabled !== false,
+          });
           refreshHeadroomStatus();
           // PRD: run the PXPIPE health check automatically when the page opens
           refreshPxpipeStatus().then(runPxpipeHealth);
@@ -743,8 +773,6 @@ export default function TokenSaverClient() {
             />
           </div>
         </div>
-        {/* PXPIPE hidden from UI — experimental, not exposed to users yet */}
-        {false && (
         <div className="flex items-center justify-between pt-4 mt-4 border-t border-border gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
@@ -788,7 +816,32 @@ export default function TokenSaverClient() {
             onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
           />
         </div>
-        )}
+      </Card>
+
+      <Card id="guards">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">
+              shield
+            </span>
+            Guards & Shields
+          </h2>
+        </div>
+        {GUARDS.map(({ key, title, description }, index) => (
+          <div
+            key={key}
+            className={`flex items-center justify-between gap-4 py-4${index < GUARDS.length - 1 ? " border-b border-border" : ""}`}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">{title}</p>
+              <p className="text-sm text-text-muted">{description}</p>
+            </div>
+            <Toggle
+              checked={guards[key]}
+              onChange={() => updateGuard(key, !guards[key])}
+            />
+          </div>
+        ))}
       </Card>
 
       <Modal
@@ -913,7 +966,7 @@ export default function TokenSaverClient() {
       </Modal>
 
       <Modal
-        isOpen={false}
+        isOpen={showPxpipeModal}
         title={pxpipeStatus.installed ? "PXPIPE" : "Setup PXPIPE"}
         onClose={() => setShowPxpipeModal(false)}
       >

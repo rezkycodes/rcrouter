@@ -49,6 +49,7 @@ import { getProxyHash } from "@/lib/network/connectionProxy.js";
 import {
   acquire as acquireAccountSlot,
   markBlocked as markAccountBlocked,
+  isAccountSemaphoreEnabled,
   isSemaphoreCapacityError,
   resolveAccountSemaphoreKey,
   resolveAccountSemaphoreMaxConcurrency,
@@ -491,13 +492,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    const semaphoreKey = resolveAccountSemaphoreKey({
-      provider,
-      model,
-      connectionId: credentials.connectionId,
-      credentials,
-      proxyHash,
-    });
+    // A null key switches the whole semaphore path off: no slot acquire, no block marking.
+    const semaphoreKey = isAccountSemaphoreEnabled(chatSettings)
+      ? resolveAccountSemaphoreKey({
+        provider,
+        model,
+        connectionId: credentials.connectionId,
+        credentials,
+        proxyHash,
+      })
+      : null;
     let releaseAccountSlot = null;
     try {
       if (semaphoreKey) {
