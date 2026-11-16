@@ -19,6 +19,7 @@ import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels, resolveClineModels } from "open-sse/services/clinepassModels.js";
+import { resolveCommandcodeModels } from "open-sse/services/commandcodeModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
@@ -100,6 +101,13 @@ const LIVE_MODEL_RESOLVERS = {
       apiKey: conn.apiKey,
     });
     return result?.models?.length ? { models: result.models } : null;
+  },
+  commandcode: async () => {
+    const result = await resolveCommandcodeModels();
+    // Throw (unlike the resolvers above) so a transient upstream failure reuses the last
+    // good catalog from _liveModelsCache instead of dropping live-only models from the ACL.
+    if (!result?.models?.length) throw new Error("commandcode catalog unavailable");
+    return { models: result.models };
   },
   "grok-cli": async (conn) => {
     const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {});

@@ -12,6 +12,7 @@ import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveClineModels, resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveCommandcodeModels } from "open-sse/services/commandcodeModels.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -315,6 +316,16 @@ const PROVIDER_MODELS_CONFIG = {
       return {
         models: getStaticProviderModels("clinepass"),
         warning: "ClinePass returned no live models; falling back to static catalog.",
+      };
+    },
+  },
+  commandcode: {
+    customResolver: async () => {
+      const result = await resolveCommandcodeModels();
+      if (result?.models?.length) return { models: result.models };
+      return {
+        models: getStaticProviderModels("commandcode"),
+        warning: "Command Code returned no live models; falling back to static catalog.",
       };
     },
   },
