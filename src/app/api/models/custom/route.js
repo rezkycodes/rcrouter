@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCustomModels, addCustomModel, deleteCustomModel } from "@/models";
+import { getCustomModels, addCustomModel, addCustomModelsBulk, deleteCustomModel } from "@/models";
 import { CAPACITY_META } from "@/shared/constants/models";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +25,15 @@ export async function GET() {
   }
 }
 
-// POST /api/models/custom - Add custom model
+// POST /api/models/custom - Add custom model (single, or bulk via { models: [...] })
 export async function POST(request) {
   try {
-    const { providerAlias, id, type, name, caps } = await request.json();
+    const body = await request.json();
+    if (Array.isArray(body?.models)) {
+      const addedCount = await addCustomModelsBulk(body.models);
+      return NextResponse.json({ success: true, count: addedCount });
+    }
+    const { providerAlias, id, type, name, caps } = body || {};
     if (!providerAlias || !id) {
       return NextResponse.json({ error: "providerAlias and id required" }, { status: 400 });
     }

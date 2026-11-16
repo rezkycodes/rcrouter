@@ -13,7 +13,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
-import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { getProviderCustomModelRows, getModelsToImport } from "@/shared/utils/providerCustomModels";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -81,8 +81,7 @@ export default function ProviderDetailPage() {
   const [oneByOneResults, setOneByOneResults] = useState({});
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
-  const [importingQoderModels, setImportingQoderModels] = useState(false);
-  const [importingClineModels, setImportingClineModels] = useState(false);
+  const [importingModels, setImportingModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
@@ -566,104 +565,68 @@ export default function ProviderDetailPage() {
     }
   };
 
-  // Fetch Qoder model list and automatically add to available models
-  const handleImportQoderModels = async () => {
-    if (importingQoderModels) return;
+  // Fetch the provider's live /models catalog and add every chat model not yet available, in one request.
+  // Uses the active connection's catalog (resolved server-side); providers without a connection
+  // (free / no-auth) fall back to their public modelsFetcher.
+  const handleImportProviderModels = async () => {
+    if (importingModels) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
-    if (!activeConnection) {
-      alert(translate("Please add an active Qoder connection first"));
+    const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
+    if (!activeConnection && !fetcher) {
+      alert(translate("Please add an active connection first"));
       return;
     }
 
-    setImportingQoderModels(true);
+    setImportingModels(true);
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || translate("Failed to fetch models"));
-        return;
+      let fetchedModels;
+      if (activeConnection) {
+        const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || translate("Failed to fetch models"));
+          return;
+        }
+        fetchedModels = Array.isArray(data.models) ? data.models : [];
+      } else {
+        fetchedModels = await fetchSuggestedModels(fetcher);
       }
-      const models = data.models || [];
-      if (models.length === 0) {
+      if (fetchedModels.length === 0) {
         alert(translate("No models returned"));
         return;
       }
 
-      let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name;
-        if (!modelId) continue;
-        
-        // Qoder model ID format may be "qoder/auto" or "auto", need to remove prefix
-        const cleanModelId = modelId.replace(/^qoder\//, "");
-        const alreadyExists = customModels.some(
-          (entry) => entry.providerAlias === providerStorageAlias && entry.id === cleanModelId && (entry.kind || entry.type || "llm") === "llm"
-        ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${cleanModelId}`);
-        if (alreadyExists) {
-          continue;
-        }
-
-        await handleAddCustomModel(cleanModelId, "llm", providerStorageAlias);
-        importedCount += 1;
-      }
-      
-      if (importedCount === 0) {
+      const toImport = getModelsToImport({
+        fetchedModels,
+        providerId,
+        providerAlias: providerStorageAlias,
+        existingModels: [...models, ...kiloFreeModels],
+        customModels,
+        modelAliases,
+      });
+      if (toImport.length === 0) {
         alert(translate("All models already exist, no new models added"));
-      } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
+        return;
       }
-    } catch (error) {
-      console.log("Error importing Qoder models:", error);
-      alert(translate("Error fetching models") + ": " + error.message);
-    } finally {
-      setImportingQoderModels(false);
-    }
-  };
-  // Fetch the live Cline /models catalog and add every model not yet present.
-  // Cline and ClinePass share the same catalog endpoint (api.cline.bot/api/v1/models).
-  const handleImportClineModels = async () => {
-    if (importingClineModels) return;
-    const activeConnection = connections.find((conn) => conn.isActive !== false);
-    if (!activeConnection) {
-      alert(translate("Please add an active Cline connection first"));
-      return;
-    }
-    setImportingClineModels(true);
-    try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+
+      const res = await fetch("/api/models/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ models: toImport }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || translate("Failed to fetch models"));
+        alert(data.error || "Failed to add custom model");
         return;
       }
-      const models = data.models || [];
-      if (models.length === 0) {
-        alert(translate("No models returned"));
-        return;
-      }
-      let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name;
-        if (!modelId) continue;
-        const alreadyExists = customModels.some(
-          (entry) => entry.providerAlias === providerStorageAlias && entry.id === modelId && (entry.kind || entry.type || "llm") === "llm"
-        ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${modelId}`);
-        if (alreadyExists) {
-          continue;
-        }
-        await handleAddCustomModel(modelId, "llm", providerStorageAlias);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
-      } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
-      }
+      await fetchCustomModels();
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+      alert(translate("Successfully added") + ` ${data.count ?? toImport.length} ` + translate("models"));
     } catch (error) {
-      console.log("Error importing Cline models:", error);
+      console.log("Error importing provider models:", error);
       alert(translate("Error fetching models") + ": " + error.message);
     } finally {
-      setImportingClineModels(false);
+      setImportingModels(false);
     }
   };
 
@@ -1302,34 +1265,6 @@ export default function ProviderDetailPage() {
           Add Model
         </button>
 
-        {/* Import Qoder models button — only show for qoder provider */}
-        {providerId === "qoder" && connections.some((conn) => conn.isActive !== false) && (
-          <button
-            onClick={handleImportQoderModels}
-            disabled={importingQoderModels}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="material-symbols-outlined text-sm" style={importingQoderModels ? { animation: "spin 1s linear infinite" } : undefined}>
-              {importingQoderModels ? "progress_activity" : "download"}
-            </span>
-            {importingQoderModels ? translate("Fetching...") : translate("Fetch Qoder Models")}
-          </button>
-        )}
-
-        {/* Import Cline /models catalog button — only show for cline and clinepass providers */}
-        {(providerId === "cline" || providerId === "clinepass") && connections.some((conn) => conn.isActive !== false) && (
-          <button
-            onClick={handleImportClineModels}
-            disabled={importingClineModels}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="material-symbols-outlined text-sm" style={importingClineModels ? { animation: "spin 1s linear infinite" } : undefined}>
-              {importingClineModels ? "progress_activity" : "download"}
-            </span>
-            {importingClineModels ? translate("Fetching...") : translate("Import from /models")}
-          </button>
-        )}
-
         {/* Suggested models from provider API — show only models not yet added */}
         {suggestedModels.length > 0 && (() => {
           const addedFullModels = new Set([
@@ -1815,6 +1750,17 @@ export default function ProviderDetailPage() {
                   <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
                 ))}
               </select>
+            )}
+            {!isCompatible && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="download"
+                loading={importingModels}
+                onClick={handleImportProviderModels}
+              >
+                {translate("Import models")}
+              </Button>
             )}
           </div>
           {!isCompatible && (() => {

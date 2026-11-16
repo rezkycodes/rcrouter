@@ -50,6 +50,27 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name, ca
   return added;
 }
 
+// Insert-only bulk add in one transaction: models that already exist are skipped (never overwritten),
+// entries without providerAlias/id are ignored. Returns how many rows were actually added.
+export async function addCustomModelsBulk(models = []) {
+  if (!Array.isArray(models) || models.length === 0) return 0;
+  const db = await getAdapter();
+  let addedCount = 0;
+  db.transaction(() => {
+    for (const item of models) {
+      const { providerAlias, id, type = "llm", name } = item || {};
+      // Only strings may reach the kv key: a number/object would be coerced into e.g. "[object Object]|…".
+      if (!providerAlias || !id || [providerAlias, id, type].some((v) => typeof v !== "string")) continue;
+      const k = customKey(providerAlias, id, type);
+      if (db.get(`SELECT 1 FROM kv WHERE scope = 'customModels' AND key = ?`, [k])) continue;
+      const value = stringifyJson({ providerAlias, id, type, name: typeof name === "string" && name ? name : id });
+      db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
+      addedCount += 1;
+    }
+  });
+  return addedCount;
+}
+
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {
   await customKv.remove(customKey(providerAlias, id, type));
 }
