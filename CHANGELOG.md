@@ -1,3 +1,22 @@
+# Unreleased
+
+## Upstream sync: 9router v0.5.75 → v0.5.119
+
+Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specific work is kept.
+
+### Brought in from upstream
+- **Providers**: Amazon Bedrock (SigV4/SSO), Nous Research, Meta Muse, MiniMax Code (+lease auth), Runcrate, SenseNova, Synthetic, Nace Drex, TinyFish search/fetch, web-provider executors, Ollama local TTS/embeddings, qoder-cn, GLM dual-auth (Z.ai OAuth), per-provider header overrides.
+- **Routing**: Smart Router combo strategy (System One decision model, Smart Switch/Strict Lock/Per-Turn stickiness), empty-response failover, request-scoped 4xx advance, combo capability/limit publishing and `thinking_levels` on `/v1/models`.
+- **API keys**: per-key access allow-lists (`access`), enforced on every `/v1` handler **in addition to** RcRouter's allowedProviders/allowedCombos/allowedKinds (a request must pass both). Restricted keys cannot use `auto/*` combos.
+- **Translators/executors**: tool-result images ride the next user turn (tool role stays text-only), tolerant tool-argument parsing for CommandCode, native CommandCode image blocks, Xiaomi MiMo v2.6 regions + browser login, Cursor agent MCP tools, Command Code live model catalog.
+- **Dashboard**: combo search, model-picker regex/negation search, custom system prompt (Token Saver), Zed picker, proxy dropdown portal, Hermes profiles, many provider cards.
+
+### RcRouter decisions during the merge
+- Kept: Guards & Shields settings, account semaphore gating, circuit breaker, Context-Relay affinity (sessionless requests get no affinity key), SmartBind proxy pools, Freebuff, ZCode browser-session provider, bulk "Import models".
+- `GET /v1/models` still publishes combos as `combo/<name>`; per-key access filtering strips the prefix before matching.
+- Dockerfile now uses the `ALPINE_MIRROR`/`NPM_REGISTRY` build args and ships `ffmpeg` (Codex STT audio conversion); CI workflow left as RcRouter's own.
+- Tests adapted where upstream behavior superseded ours (tool-result images, request-scoped 4xx advance, `validateApiKey` returns the key record, usage `byApiKey` buckets keyed by full key).
+
 # v1.0.1 (2026-09-15)
 
 ## Features

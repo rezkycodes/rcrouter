@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Records the runtime's native fetch so proxyFetch can honor fetch stubs installed before it loads.
+    setupFiles: [resolve(__dirname, "setup/nativeFetch.js")],
     include: ["**/*.test.js"],
     // Don't scan into git worktrees nested under .claude/ — they carry their
     // own copies of the test files but lack an installed node_modules (open-sse,

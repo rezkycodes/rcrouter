@@ -23,6 +23,7 @@ import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import {
   canonicalizeKiroConversation,
   normalizeKiroToolSpecs,
+  kiroEmptyUserContent,
 } from "../concerns/kiroConversation.js";
 
 const REMOTE_IMAGE_DIAGNOSTIC =
@@ -54,7 +55,8 @@ function convertMessages(messages, model) {
 
   const flushPending = () => {
     if (currentRole === "user") {
-      const content = pendingUserContent.join("\n\n").trim() || "continue";
+      const content = pendingUserContent.join("\n\n").trim()
+        || kiroEmptyUserContent(pendingToolResults.length > 0);
       const userMsg = {
         userInputMessage: {
           content: content,
@@ -441,14 +443,14 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
     value: upstreamModel,
     enumerable: false
   });
-  // Keep the canonical prompt available to direct-route callers and replay
-  // diagnostics without putting the unsupported top-level field on the wire.
-  Object.defineProperty(payload, "systemPrompt", {
-    value: systemPrompt,
-    enumerable: false,
-    configurable: true
-  });
 
+  // Kiro tool specs get sanitized names (`mcp__a__b` → `mcp_a_b`); keep the
+  // reverse map so tool calls stream back under the client's own names.
+  const restoredToolNames = new Map();
+  for (const [original, sanitized] of nameMap) {
+    if (original !== sanitized) restoredToolNames.set(sanitized, original);
+  }
+  if (restoredToolNames.size) payload._toolNameMap = restoredToolNames;
   return payload;
 }
 

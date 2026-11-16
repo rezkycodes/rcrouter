@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { keyAccessFromColumns, keyAccessToColumns } from "@/shared/utils/keyAccess.js";
+import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
 // Parse a JSON TEXT column with null=all / []=none semantics.
 // DB NULL → null (all allowed). DB "[]" → [] (none). DB "[x]" → [x].
@@ -26,6 +28,7 @@ function rowToKey(row) {
     allowedProviders: parsePermList(row.allowedProviders),
     allowedCombos: parsePermList(row.allowedCombos),
     allowedKinds: parsePermList(row.allowedKinds),
+    access: keyAccessFromColumns(row.accessRestricted, row.accessAllow),
   };
 }
 
@@ -38,6 +41,14 @@ export async function getApiKeys() {
 export async function getApiKeyById(id) {
   const db = await getAdapter();
   const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
+  return rowToKey(row);
+}
+
+// Used by the /v1 handlers to read the presented key's access settings.
+export async function getApiKeyByKey(key) {
+  if (!key) return null;
+  const db = await getAdapter();
+  const row = db.get(`SELECT * FROM apiKeys WHERE key = ?`, [key]);
   return rowToKey(row);
 }
 
@@ -56,10 +67,12 @@ export async function createApiKey(name, machineId) {
     allowedProviders: null,
     allowedCombos: null,
     allowedKinds: null,
+    access: { restricted: false, allow: [] },
   };
+  const cols = keyAccessToColumns(KEY_ACCESS_UNRESTRICTED);
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, allowedProviders, allowedCombos, allowedKinds) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, null, null, null]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, allowedProviders, allowedCombos, allowedKinds, accessRestricted, accessAllow) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, null, null, null, cols.accessRestricted, cols.accessAllow]
   );
   return apiKey;
 }
@@ -78,8 +91,10 @@ export async function updateApiKey(id, data) {
     if ("allowedProviders" in data) merged.allowedProviders = data.allowedProviders;
     if ("allowedCombos" in data) merged.allowedCombos = data.allowedCombos;
     if ("allowedKinds" in data) merged.allowedKinds = data.allowedKinds;
+    if ("access" in data) merged.access = data.access;
+    const cols = keyAccessToColumns(merged.access);
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedProviders = ?, allowedCombos = ?, allowedKinds = ? WHERE id = ?`,
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, allowedProviders = ?, allowedCombos = ?, allowedKinds = ?, accessRestricted = ?, accessAllow = ? WHERE id = ?`,
       [
         merged.key,
         merged.name,
@@ -88,10 +103,12 @@ export async function updateApiKey(id, data) {
         serializePermList(merged.allowedProviders),
         serializePermList(merged.allowedCombos),
         serializePermList(merged.allowedKinds),
+        cols.accessRestricted,
+        cols.accessAllow,
         id,
       ]
     );
-    result = merged;
+    result = rowToKey(db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]));
   });
   return result;
 }

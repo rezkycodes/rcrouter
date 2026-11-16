@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { resolveCommandcodeModels } from "../../open-sse/services/commandcodeModels.js";
+import { resolveCommandCodeModels } from "../../open-sse/services/commandcodeModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 
 const MODELS_URL = "https://api.commandcode.ai/provider/v1/models?view=client";
@@ -34,11 +34,11 @@ const catalog = {
   ],
 };
 
-describe("resolveCommandcodeModels", () => {
+describe("resolveCommandCodeModels", () => {
   it("maps the public catalog, skipping hidden and id-less entries", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(catalog));
 
-    const result = await resolveCommandcodeModels(fetchImpl);
+    const result = await resolveCommandCodeModels(fetchImpl);
 
     expect(result.models).toHaveLength(2);
     expect(result.models[0]).toEqual({
@@ -64,7 +64,7 @@ describe("resolveCommandcodeModels", () => {
   it("calls the catalog endpoint with provider transport headers and no credentials", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(catalog));
 
-    await resolveCommandcodeModels(fetchImpl);
+    await resolveCommandCodeModels(fetchImpl);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];
@@ -77,18 +77,18 @@ describe("resolveCommandcodeModels", () => {
 
   it("returns null when upstream answers with a non-OK status", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({}, false));
-    expect(await resolveCommandcodeModels(fetchImpl)).toBeNull();
+    expect(await resolveCommandCodeModels(fetchImpl)).toBeNull();
   });
 
   it("returns null when the request throws", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
-    expect(await resolveCommandcodeModels(fetchImpl)).toBeNull();
+    expect(await resolveCommandCodeModels(fetchImpl)).toBeNull();
   });
 
   it("returns null when the payload has no usable models", async () => {
     const hiddenOnly = { data: [{ id: "hidden-model", hidden: true }] };
-    expect(await resolveCommandcodeModels(vi.fn().mockResolvedValue(jsonResponse(hiddenOnly)))).toBeNull();
-    expect(await resolveCommandcodeModels(vi.fn().mockResolvedValue(jsonResponse({ data: "nope" })))).toBeNull();
-    expect(await resolveCommandcodeModels(vi.fn().mockResolvedValue(jsonResponse(null)))).toBeNull();
+    expect(await resolveCommandCodeModels(vi.fn().mockResolvedValue(jsonResponse(hiddenOnly)))).toBeNull();
+    expect(await resolveCommandCodeModels(vi.fn().mockResolvedValue(jsonResponse({ data: "nope" })))).toBeNull();
+    expect(await resolveCommandCodeModels(vi.fn().mockResolvedValue(jsonResponse(null)))).toBeNull();
   });
 });

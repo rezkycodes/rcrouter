@@ -57,7 +57,6 @@ describe("OpenAI → Cursor", () => {
 });
 
 describe("OpenAI → CommandCode", () => {
-  // openai-to-commandcode.js — retain malformed arguments for diagnostics.
   it("malformed tool arguments are not silently emptied", () => {
     const out = O2CC({
       messages: [
@@ -70,24 +69,10 @@ describe("OpenAI → CommandCode", () => {
     });
     const asst = out.params.messages.find((m) => m.role === "assistant");
     const call = asst.content.find((b) => b.type === "tool-call");
-    expect(Object.keys(call.input).length, "arguments silently dropped to {}").toBeGreaterThan(0);
+    expect(Object.keys(call.input).length, "arguments preserved").toBeGreaterThan(0);
   });
 
-  // openai-to-commandcode.js — the text-only `/alpha/generate` schema emits
-  // an explicit marker when no image field is available.
-  it("image content becomes an explicit diagnostic", () => {
-    const out = O2CC({
-      messages: [{ role: "user", content: [
-        { type: "text", text: "look" },
-        { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
-      ] }],
-    });
-    const json = JSON.stringify(out);
-    expect(json).toContain("[image omitted]");
-    expect(json).not.toContain("BBBB");
-  });
-
-  it.fails("image bytes are preserved in the CommandCode request", () => {
+  it("image content is preserved as native CommandCode image blocks", () => {
     const out = O2CC({
       messages: [{ role: "user", content: [
         { type: "text", text: "look" },
@@ -95,5 +80,10 @@ describe("OpenAI → CommandCode", () => {
       ] }],
     });
     expect(JSON.stringify(out)).toContain("BBBB");
+    expect(JSON.stringify(out)).not.toContain("[image omitted]");
+    expect(out.params.messages[0].content).toEqual([
+      { type: "text", text: "look" },
+      { type: "image", image: "data:image/png;base64,BBBB", mimeType: "image/png", mediaType: "image/png" },
+    ]);
   });
 });

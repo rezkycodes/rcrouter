@@ -48,7 +48,12 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(typeof body.input[0].content).not.toBe("string");
   });
 
-  it("skips Responses tool/reasoning history instead of collapsing it into a message (#2132)", async () => {
+  // #2132 invariant: tool/reasoning history is never collapsed into a message.
+  // a440ef43 narrowed the old blanket skip: only plain-text function_call_output
+  // leaves are projected to the proxy as temporary tool messages; everything else
+  // (user items, calls, reasoning) stays native and is never sent. A proxy reply
+  // that does not mirror those tool messages is rejected and the input is untouched.
+  it("never collapses Responses tool/reasoning history into a message (#2132)", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -100,8 +105,12 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     });
 
     expect(data).toBeNull();
-    expect(global.fetch).not.toHaveBeenCalled();
+    // Only the plain-text tool output leaf reaches the proxy, as a tool message:
+    // no user/assistant message, call arguments, or reasoning summary is projected.
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const sent = JSON.parse(global.fetch.mock.calls[0][1].body).messages;
+    expect(sent).toEqual([{ role: "tool", tool_call_id: "headroom-tool-0", content: "ok" }]);
     expect(body.input).toEqual(input);
-    expect(diagnostics.reason).toBe("skipped: openai-responses tool/reasoning input is not safe to compress");
+    expect(diagnostics.reason).toBe("proxy response did not preserve tool-output IDs, order, roles or text");
   });
 });

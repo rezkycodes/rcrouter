@@ -1,51 +1,56 @@
-import { PROVIDERS } from "../config/providers.js";
+/**
+ * CommandCode model discovery.
+ *
+ * CommandCode publishes the same catalog its own CLI polls — a public endpoint
+ * (no auth, ETag = catalogVersion, refreshAfterSeconds: 900) that the CLI keeps
+ * in ~/.commandcode/cache/model-catalog. The registry's static `models` array is
+ * only an offline fallback: it lags every vendor release, so both the dashboard
+ * provider page and GET /v1/models resolve the catalog live.
+ */
 
-// Public catalog: no API key required, but upstream expects the CLI transport headers.
-const COMMANDCODE_MODELS_ENDPOINT = "https://api.commandcode.ai/provider/v1/models?view=client";
-const FETCH_TIMEOUT_MS = 5000;
+import commandcodeProvider from "../providers/registry/commandcode.js";
 
-function toModel(raw) {
-  const inputModalities = Array.isArray(raw.inputModalities) ? raw.inputModalities : [];
-  const reasoningEfforts = Array.isArray(raw.reasoningEfforts) ? raw.reasoningEfforts : [];
-  return {
-    id: raw.id,
-    name: raw.display?.label || raw.name || raw.id,
-    description: raw.display?.description || null,
-    contextLength: raw.context_length,
-    maxOutputTokens: raw.maxOutputTokens ?? undefined,
-    isVL: inputModalities.includes("image"),
-    isReasoning: reasoningEfforts.length > 0,
-  };
+export const COMMANDCODE_MODELS_URL = "https://api.commandcode.ai/provider/v1/models?view=client";
+
+/**
+ * Catalog rows carry display copy plus capability flags. `hidden` entries are
+ * the free/stealth aliases the vendor CLI keeps out of its own picker.
+ */
+export function parseCommandCodeModels(data) {
+  const models = Array.isArray(data?.data) ? data.data : [];
+  return models
+    .filter((model) => model?.id && !model.hidden)
+    .map((model) => {
+      const modalities = Array.isArray(model.inputModalities) ? model.inputModalities : [];
+      const efforts = Array.isArray(model.reasoningEfforts) ? model.reasoningEfforts : [];
+      return {
+        id: model.id,
+        name: model.display?.label || model.name || model.id,
+        description: model.display?.description || null,
+        contextLength: model.context_length,
+        maxOutputTokens: model.maxOutputTokens ?? undefined,
+        isVL: modalities.includes("image"),
+        isReasoning: efforts.length > 0
+      };
+    });
 }
 
 /**
- * Fetch Command Code's live model catalog (the static registry list lags upstream).
- * ponytail: no TTL cache or in-flight dedupe, same as the cline/cursor resolvers. allowedModels only
- * caches the built lists (15-30s), so concurrent cache misses each hit upstream; add a shared cache
- * here if that latency ever shows up on the request path.
- *
- * @param {typeof fetch} [fetchImpl] - injectable for tests
- * @returns {Promise<{ models: object[] } | null>} null on any failure or when nothing usable returns
+ * Fetch the live catalog. Returns null when the vendor endpoint is unreachable
+ * or answers non-2xx so callers can fall back to their static list.
  */
-export async function resolveCommandcodeModels(fetchImpl = fetch) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
+export async function resolveCommandCodeModels(fetchImpl = fetch) {
   try {
-    const response = await fetchImpl(COMMANDCODE_MODELS_ENDPOINT, {
+    const response = await fetchImpl(COMMANDCODE_MODELS_URL, {
       method: "GET",
-      headers: { ...PROVIDERS.commandcode.headers },
-      signal: controller.signal,
+      headers: { ...commandcodeProvider.transport.headers },
+      // ponytail: allowedModels calls this on the request path; never let a stalled catalog hang it.
+      signal: AbortSignal.timeout(5000)
     });
     if (!response?.ok) return null;
-
-    const json = await response.json();
-    const rawList = Array.isArray(json?.data) ? json.data : [];
-    const models = rawList.filter((m) => m?.id && !m.hidden).map(toModel);
-    return models.length ? { models } : null;
+    const models = parseCommandCodeModels(await response.json());
+    return models.length > 0 ? { models } : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
-  resolveCommandcodeModels: vi.fn(),
+  resolveCommandCodeModels: vi.fn(),
 }));
 
 vi.mock("@/models", () => ({ getProviderConnectionById: mocks.getProviderConnectionById }));
@@ -12,7 +12,7 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   updateProviderCredentials: vi.fn(),
 }));
 vi.mock("open-sse/services/commandcodeModels.js", () => ({
-  resolveCommandcodeModels: mocks.resolveCommandcodeModels,
+  resolveCommandCodeModels: mocks.resolveCommandCodeModels,
 }));
 
 const { GET } = await import("../../src/app/api/providers/[id]/models/route.js");
@@ -31,7 +31,7 @@ describe("GET /api/providers/[id]/models for commandcode", () => {
       { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
       { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
     ];
-    mocks.resolveCommandcodeModels.mockResolvedValue({ models: live });
+    mocks.resolveCommandCodeModels.mockResolvedValue({ models: live });
 
     const response = await GET(new Request("http://localhost/api/providers/cc-1/models"), params);
     const body = await response.json();
@@ -41,7 +41,7 @@ describe("GET /api/providers/[id]/models for commandcode", () => {
   });
 
   it("falls back to the static catalog with a warning when live returns nothing", async () => {
-    mocks.resolveCommandcodeModels.mockResolvedValue(null);
+    mocks.resolveCommandCodeModels.mockResolvedValue(null);
 
     const response = await GET(new Request("http://localhost/api/providers/cc-1/models"), params);
     const body = await response.json();

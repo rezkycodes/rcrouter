@@ -135,7 +135,10 @@ function extractAntigravitySession(body) {
     return m ? normalizeSessionId(m[1]) : null;
 }
 
-function extractClientSessionId(headers, body, scope = "") {
+// Exported so the combo router can ask for an *explicit* client session only:
+// resolveSessionIdentity() falls back to random/derived ids, which must not become
+// Context-Relay affinity keys (one map entry per sessionless request).
+export function extractClientSessionId(headers, body, scope = "") {
     // Claude Code sends the session in a header AND in metadata.user_id; the header
     // survives translation to formats that drop metadata (e.g. Responses API).
     const claude = extractClaudeCodeSession(body?.metadata?.user_id)

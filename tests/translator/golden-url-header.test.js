@@ -23,10 +23,18 @@ const SPECIALIZED = new Set([
   "xiaomi-tokenplan", "mimo-free",
 ]);
 
+// Per-process / per-request values: kimi's random device name, minimax's session UUID.
+// codebuddy-intl mints fresh conversation/request UUIDs on every buildHeaders() call.
+const VOLATILE_HEADERS = new Set([
+  "x-msh-device-name", "x-mavis-session-id",
+  "x-conversation-id", "x-conversation-message-id", "x-conversation-request-id", "x-request-id",
+]);
+
 // Sanitize header: khử token + field thời gian động (kimi X-Msh-Device-Id) để snapshot ổn định.
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
+    if (VOLATILE_HEADERS.has(k.toLowerCase())) { out[k] = "<VOLATILE>"; continue; }
     if (typeof v !== "string") {
       out[k] = v;
       continue;
@@ -38,7 +46,6 @@ function sanitize(headers) {
       .replace(/kimi-\d{10,}/g, "kimi-<TS>");
     // Runtime identity is intentionally not part of the golden contract.
     if (k.toLowerCase() === "x-platform-version") value = "v<NODE>";
-    if (k.toLowerCase() === "x-msh-device-name") value = "<HOST>";
     out[k] = value;
   }
   return out;

@@ -1,4 +1,6 @@
 import { isValidApiKey, extractApiKey, isProviderAllowed, isComboAllowed, isKindAllowed } from "@/sse/services/auth.js";
+import { getKeyAccessContext } from "@/sse/services/keyAccess.js";
+import { filterModelsByKeyAccess } from "@/sse/services/keyAccessModels.js";
 import { getSettings } from "@/lib/localDb";
 import { stripComboPrefix } from "open-sse/services/combo.js";
 import { buildModelsList, getAllowedModelIds, isModelAllowed } from "@/sse/services/allowedModels.js";
@@ -95,6 +97,8 @@ export async function GET(request) {
         return true;
       });
     }
+    // Per-key `access` allow list, applied on top of the provider/combo/kind ACL above.
+    data = await filterModelsByKeyAccess(await getKeyAccessContext(request), data);
 
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },

@@ -68,8 +68,8 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(JSON.stringify(out)).toContain("ENCRYPTED_BLOB");
   });
 
-  // claude-to-openai.js:155-173 — tool_result images remain OpenAI multimodal
-  // content blocks rather than being stringified into raw JSON.
+  // claude-to-openai.js — tool_result images are not stringified into raw JSON; the
+  // text-only tool role gets "", and the image moves to the next user turn (upstream f4f06f29).
   it("tool_result image block is preserved", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
@@ -82,8 +82,44 @@ describe("Claude Code CLI context → OpenAI", () => {
       ],
     });
     const tool = out.messages.find((m) => m.role === "tool");
-    expect(tool?.content, "image turned into raw JSON").toEqual([
-      { type: "image_url", image_url: { url: "data:image/png;base64,IMG" } },
-    ]);
+    expect(tool?.content, "image turned into raw JSON").not.toMatch(/^\[/);
+    // The tool role is text-only: the image rides in the user turn that follows it.
+    const followUp = out.messages[out.messages.indexOf(tool) + 1];
+    expect(followUp?.role).toBe("user");
+    expect(followUp?.content).toContainEqual({ type: "image_url", image_url: { url: "data:image/png;base64,IMG" } });
+  });
+
+  it("forwards Claude output_config.effort to CommandCode params.reasoning_effort", () => {
+    for (const eff of ["low", "medium", "high", "max"]) {
+      const out = translateRequest(
+        FORMATS.CLAUDE,
+        FORMATS.COMMANDCODE,
+        "deepseek/deepseek-v4.1-flash",
+        {
+          output_config: { effort: eff },
+          messages: [{ role: "user", content: "hi" }],
+        },
+        true,
+        null,
+        "commandcode"
+      );
+      expect(out.params.reasoning_effort).toBe(eff);
+    }
+  });
+
+  it("handles Claude adaptive thinking mapping to high effort", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.COMMANDCODE,
+      "deepseek/deepseek-v4.1-flash",
+      {
+        thinking: { type: "adaptive" },
+        messages: [{ role: "user", content: "hi" }],
+      },
+      true,
+      null,
+      "commandcode"
+    );
+    expect(out.params.reasoning_effort).toBe("high");
   });
 });

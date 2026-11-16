@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SCHEMA_VERSION } from "@/lib/db/schema.js";
 
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
@@ -39,7 +40,9 @@ describe("release migration/rollback drill", () => {
     const { getAdapter: getAdapterAfterMigration } = await import("@/lib/db/driver.js");
     const migrated = await getAdapterAfterMigration();
     const backupRoot = path.join(tempDir, "db", "backups");
-    const backupDirs = fs.readdirSync(backupRoot).filter((name) => name.startsWith("schema-0-to-1-"));
+    // The forced stored version is 0, so the backup is labelled with the current SCHEMA_VERSION
+    // (bumped to 2 by the upstream sync's additive apiKeys columns); never hardcode it.
+    const backupDirs = fs.readdirSync(backupRoot).filter((name) => name.startsWith(`schema-0-to-${SCHEMA_VERSION}-`));
     expect(backupDirs.length).toBeGreaterThan(0);
     const backupFile = path.join(backupRoot, backupDirs.sort().at(-1), "data.sqlite");
     expect(fs.existsSync(backupFile)).toBe(true);

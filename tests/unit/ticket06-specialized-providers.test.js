@@ -109,7 +109,7 @@ describe("Ticket 06: Specialized Providers", () => {
     it("has playwright-core in dependencies", () => {
       const pkgPath = path.resolve(process.cwd(), "package.json");
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-      expect(pkg.dependencies["playwright-core"]).toBe("^1.60.0");
+      expect(pkg.dependencies["playwright-core"]).toBe("^1.62.1");
     });
   });
 });

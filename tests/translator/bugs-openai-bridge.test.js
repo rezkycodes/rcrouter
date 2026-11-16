@@ -34,7 +34,9 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
     expect(json, "thinking content lost via OpenAI bridge").toContain("secret reasoning");
   });
 
-  // claude-to-openai.js — preserve multimodal tool-result content.
+  // claude-to-openai.js — the OpenAI tool role is text-only, so a tool-result image
+  // is handed to the model in the user turn that follows the tool messages (upstream
+  // 9router f4f06f29 "keep tool-result images").
   it("tool_result with image block is not turned into raw JSON / dropped", () => {
     const out = T(FORMATS.CLAUDE, FORMATS.OPENAI, {
       messages: [
@@ -49,8 +51,11 @@ describe("bug: Claude → OpenAI bridge data loss", () => {
       ],
     });
     const toolMsg = out.messages.find((m) => m.role === "tool");
-    expect(Array.isArray(toolMsg?.content), "image in tool_result lost").toBe(true);
-    expect(JSON.stringify(toolMsg?.content)).toContain("ZZZ");
+    expect(typeof toolMsg?.content, "tool message must stay text-only").toBe("string");
+    expect(toolMsg.content, "image turned into raw JSON").not.toContain("ZZZ");
+    const followUp = out.messages[out.messages.indexOf(toolMsg) + 1];
+    expect(followUp?.role).toBe("user");
+    expect(JSON.stringify(followUp?.content), "image in tool_result lost").toContain("data:image/png;base64,ZZZ");
   });
 
   // claude-to-openai.js — preserve tool-result failure state.

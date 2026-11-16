@@ -50,6 +50,15 @@ export const STRATEGY_CARDS = [
     desc: "Prioritizes accounts whose subscription quota resets soonest (< 48h) to minimize waste.",
   },
   {
+    key: "smart",
+    name: "Smart Router",
+    badge: "Adaptive",
+    badgeColor: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+    icon: "psychology",
+    iconColor: "text-indigo-500 bg-indigo-500/10",
+    desc: "Asks a System One decision model to pick the best member before generation; Smart Switch adds adaptive hysteresis to avoid flapping.",
+  },
+  {
     key: "fusion",
     name: "Fusion",
     badge: "Highest Quality",

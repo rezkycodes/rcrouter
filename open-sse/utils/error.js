@@ -25,14 +25,17 @@ export function buildErrorBody(statusCode, message, codeOverride = null) {
  * Create error Response object (for non-streaming)
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
+ * @param {object} [extraHeaders] - Optional response headers (e.g. upstream rate-limit headers)
+ * @param {string} [codeOverride] - Optional machine-readable error code
  * @returns {Response} HTTP Response object
  */
-export function errorResponse(statusCode, message, codeOverride = null) {
+export function errorResponse(statusCode, message, extraHeaders = null, codeOverride = null) {
   return new Response(JSON.stringify(buildErrorBody(statusCode, message, codeOverride)), {
     status: statusCode,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
+      "Access-Control-Allow-Origin": "*",
+      ...extraHeaders
     }
   });
 }
@@ -96,13 +99,13 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {string} [codeOverride] - Optional machine-readable error code
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, codeOverride = null) {
+export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null, codeOverride = null) {
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
-    response: errorResponse(statusCode, message, codeOverride)
+    response: errorResponse(statusCode, message, extraHeaders, codeOverride)
   };
 }
 
@@ -114,7 +117,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, codeOverride 
  * @param {string} retryAfterHuman - Human-readable retry info e.g. "reset after 30s"
  * @returns {Response}
  */
-export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman) {
+export function unavailableResponse(statusCode, message, retryAfter, retryAfterHuman, extraHeaders = null) {
   const retryAfterSec = Math.max(Math.ceil((new Date(retryAfter).getTime() - Date.now()) / 1000), 1);
   const msg = `${message} (${retryAfterHuman})`;
   return new Response(
@@ -122,8 +125,10 @@ export function unavailableResponse(statusCode, message, retryAfter, retryAfterH
     {
       status: statusCode,
       headers: {
+        ...extraHeaders,
         "Content-Type": "application/json",
-        "Retry-After": String(retryAfterSec)
+        // Intentionally mis-cased to prevent duplicate headers
+        "retry-after": String(retryAfterSec)
       }
     }
   );
