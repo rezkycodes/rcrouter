@@ -270,6 +270,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         strictProxy: resolvedProxy.strictProxy === true,
       },
       connectionId: connection.id,
+      // Accounts configured for this provider/model: bounds the fallback loop (chat.js).
+      accountCount: connections.length,
       // Include current status for optimization check
       testStatus: connection.testStatus,
       lastError: connection.lastError,

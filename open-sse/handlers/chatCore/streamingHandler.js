@@ -5,10 +5,13 @@ import { normalizeKimiToolCalls } from "../../utils/kimiToolParser.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { SSE_KEEPALIVE, resolveStreamReadinessTimeoutMs } from "../../config/resilienceConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
+import { awaitFirstChunk, describeReadinessFailure, READINESS_STATE } from "../../utils/streamReadiness.js";
+import { createErrorResult } from "../../utils/error.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
-import { saveRequestDetail } from "@/lib/usageDb.js";
+import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
 import { upstreamResponseHeaders } from "../../utils/upstreamHeaders.js";
 
@@ -48,17 +51,29 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 }
 
 /**
- * Handle streaming response — pipe provider SSE through transform stream to client.
+ * The upstream gave no first chunk in time (or its read failed): release it and
+ * return a normal failed result so account/combo fallback takes over.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, credentials, providerThinking }) {
-  if (onRequestSuccess) {
-    Promise.resolve()
-      .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
-      });
-  }
+function failStreamReadiness({ readiness, timeoutMs, provider, model, connectionId, streamController }) {
+  const failure = describeReadinessFailure(readiness, { timeoutMs });
+  const cause = new Error(failure.detail);
+  cause.stack = undefined; // expected operational condition: keep the log line free of a stack dump
+  if (streamController?.signal?.aborted) streamController.handleDisconnect?.("aborted_before_first_chunk");
+  else streamController?.handleError?.(cause);
+  streamController?.abort?.();
+  appendRequestLog({ model, provider, connectionId, status: `FAILED ${failure.status}` }).catch(() => { });
+  return { ...createErrorResult(failure.status, failure.message), errorCode: failure.errorCode };
+}
 
+/**
+ * Handle streaming response — pipe provider SSE through transform stream to client.
+ *
+ * Readiness gate: the first upstream chunk is awaited (streamReadinessTimeoutMs,
+ * default 25s) BEFORE the response is committed, so a stalled upstream fails
+ * over instead of hanging. Once committed, SSE keep-alive comments cover idle
+ * gaps so edge proxies (Cloudflare 520/524) do not cut the connection.
+ */
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, credentials, providerThinking, streamReadinessTimeoutMs }) {
   // When upstream returns HTML/text instead of SSE (e.g. Cloudflare 5xx error
   // page), piping it through the SSE transform stream causes Next.js
   // "failed to pipe response" and crashes the chat router. Read the body,
@@ -86,6 +101,22 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     };
   }
 
+  const timeoutMs = resolveStreamReadinessTimeoutMs(PROVIDERS[provider]?.streamReadinessTimeoutMs ?? streamReadinessTimeoutMs);
+  const readiness = await awaitFirstChunk(providerResponse.body, { timeoutMs });
+  if (readiness.state === READINESS_STATE.TIMEOUT || readiness.state === READINESS_STATE.ERROR) {
+    return failStreamReadiness({ readiness, timeoutMs, provider, model, connectionId, streamController });
+  }
+
+  // Only a stream that actually produced data (or ended cleanly) counts as an
+  // upstream success: it clears the account's error state / circuit breaker.
+  if (onRequestSuccess) {
+    Promise.resolve()
+      .then(onRequestSuccess)
+      .catch(err => {
+        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+      });
+  }
+
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, body, onStreamComplete, apiKey, credentials, providerThinking });
 
   // Terminal bytes when the stream aborts after HTTP 200 was already sent, so the
@@ -97,7 +128,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     ? buildAbortedResponsesTerminalBytes
     : (message) => buildStreamErrorBytes(HTTP_STATUS.GATEWAY_TIMEOUT, message, sourceFormat);
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
+  const transformedBody = pipeWithDisconnect({ body: readiness.body }, transformStream, streamController, onAbortTerminal, stallTimeoutMs, { keepAliveMs: SSE_KEEPALIVE.INTERVAL_MS });
 
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,

@@ -1,6 +1,7 @@
 // Stream handler with disconnect detection - shared for all providers
 import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
+import { createSseKeepAlive } from "./sseKeepAlive.js";
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -99,10 +100,13 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
  * @param {function} [onAbortTerminal] - Receives a human-readable abort
  * message and returns terminal SSE bytes to emit downstream.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, { keepAliveMs = 0 } = {}) {
   const reader = transformStream.readable.getReader();
   const writer = transformStream.writable.getWriter();
   let terminalEmitted = false;
+  // Optional SSE keep-alive (comment lines) for slow-prefill / silent-thinking
+  // streams; see sseKeepAlive.js. Off unless the caller serves SSE and opts in.
+  let keepAlive = null;
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
   const emitTerminal = (controller) => {
@@ -115,8 +119,23 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   };
 
   return new ReadableStream({
+    start(controller) {
+      if (!(keepAliveMs > 0)) return;
+      keepAlive = createSseKeepAlive({
+        intervalMs: keepAliveMs,
+        isActive: () => streamController.isConnected(),
+        emit: (bytes) => {
+          // Consumer backed up: real data is already pending, no beat needed.
+          if (controller.desiredSize !== null && controller.desiredSize <= 0) return false;
+          controller.enqueue(bytes);
+          return true;
+        },
+      });
+      keepAlive.start();
+    },
     async pull(controller) {
       if (!streamController.isConnected()) {
+        keepAlive?.stop();
         emitTerminal(controller);
         controller.close();
         return;
@@ -126,12 +145,15 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
+          keepAlive?.stop();
           streamController.handleComplete();
           controller.close();
           return;
         }
+        keepAlive?.noteOutput(value);
         controller.enqueue(value);
       } catch (error) {
+        keepAlive?.stop();
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
@@ -169,6 +191,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     },
 
     cancel(reason) {
+      keepAlive?.stop();
       streamController.handleDisconnect(reason || "cancelled");
       reader.cancel();
       writer.abort();
@@ -191,8 +214,9 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {Response} providerResponse - Response from provider
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
+ * @param {object} [streamOptions] - { keepAliveMs }: emit SSE keep-alive comments after this much client-side idleness (0/absent = off)
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, streamOptions = {}) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
@@ -254,7 +278,8 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   return createDisconnectAwareStream(
     { readable: transformedBody, writable: { getWriter: () => ({ abort: () => Promise.resolve() }) } },
     wrappedController,
-    onAbortTerminal ? () => onAbortTerminal(abortMessage) : null
+    onAbortTerminal ? () => onAbortTerminal(abortMessage) : null,
+    streamOptions
   );
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mergeWithDefaults } from "../../src/lib/db/repos/settingsRepo.js";
 import {
@@ -113,6 +113,39 @@ describe("resilience constants", () => {
     expect(RESILIENCE_SETTING_DEFAULTS).toEqual({
       cooldownRetryEnabled: true,
       cooldownRetryMaxWaitMs: 30_000,
+      streamReadinessTimeoutMs: 25_000,
+    });
+  });
+});
+
+describe("env-derived setting defaults", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("reads COOLDOWN_RETRY_*, STREAM_READINESS_TIMEOUT_MS from the environment", async () => {
+    vi.stubEnv("COOLDOWN_RETRY_ENABLED", "false");
+    vi.stubEnv("COOLDOWN_RETRY_MAX_WAIT_MS", "12000");
+    vi.stubEnv("STREAM_READINESS_TIMEOUT_MS", "40000");
+    vi.resetModules();
+    const fresh = await import("../../open-sse/config/resilienceConfig.js");
+    expect(fresh.RESILIENCE_SETTING_DEFAULTS).toEqual({
+      cooldownRetryEnabled: false,
+      cooldownRetryMaxWaitMs: 12_000,
+      streamReadinessTimeoutMs: 40_000,
+    });
+  });
+
+  it("ignores invalid or out-of-range env values", async () => {
+    vi.stubEnv("COOLDOWN_RETRY_ENABLED", "maybe");
+    vi.stubEnv("COOLDOWN_RETRY_MAX_WAIT_MS", "999999");
+    vi.stubEnv("STREAM_READINESS_TIMEOUT_MS", "abc");
+    vi.resetModules();
+    const fresh = await import("../../open-sse/config/resilienceConfig.js");
+    expect(fresh.RESILIENCE_SETTING_DEFAULTS).toEqual({
+      cooldownRetryEnabled: true,
+      cooldownRetryMaxWaitMs: 60_000,
       streamReadinessTimeoutMs: 25_000,
     });
   });

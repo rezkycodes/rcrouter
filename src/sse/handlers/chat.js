@@ -52,6 +52,7 @@ import {
 } from "open-sse/services/accountFallback.js";
 import { getProxyHash } from "@/lib/network/connectionProxy.js";
 import { createCooldownGate, COOLDOWN_DECISION } from "open-sse/utils/cooldownRetry.js";
+import { createFallbackBudget } from "open-sse/utils/fallbackCap.js";
 import {
   acquire as acquireAccountSlot,
   markBlocked as markAccountBlocked,
@@ -481,12 +482,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     log,
     label: `${provider}/${model}`,
   });
+  // At most min(accountCount, 6) account attempts per pass, so a degraded
+  // provider cannot spin through dozens of accounts (each costing a timeout).
+  const fallbackBudget = createFallbackBudget();
 
   // Lock order is deliberate: breaker gate -> provider mutex (inside
   // getProviderCredentials) -> account semaphore -> upstream request. The
   // semaphore is released before account/breaker state is updated, so no
   // fallback path ever waits while holding a lower-level lock.
   while (true) {
+    if (fallbackBudget.isExhausted()) {
+      log.warn("CHAT", `[${provider}/${model}] account fallback limit reached (${fallbackBudget.limit}) — returning last upstream error`);
+      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", lastHeaders);
+    }
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
       preferredConnectionId: options?.preferredConnectionId,
       requestedModel: requestedModel || model,
@@ -498,6 +506,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (cooldownDecision === COOLDOWN_DECISION.ABORTED) return new Response(null, { status: 499 });
       if (cooldownDecision === COOLDOWN_DECISION.RETRY) {
         excludeConnectionIds.clear();
+        fallbackBudget.reset();
         continue;
       }
     }
@@ -532,6 +541,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       excludeConnectionIds.add(credentials.connectionId);
       continue;
     }
+    fallbackBudget.consume(credentials.accountCount);
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
@@ -626,6 +636,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // Lazily warms the in-process module on first use; null when not installed (fail-open)
         pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
         loopGuardEnabled: chatSettings.loopGuardEnabled !== false && chatSettings.loopGuardEnabled !== 0,
+        streamReadinessTimeoutMs: chatSettings.streamReadinessTimeoutMs,
         onPxpipeEvent: appendPxpipeEvent,
         providerThinking,
         // Per-provider user overrides (custom headers / connect timeout) from settings
