@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { applyLoopGuard } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
@@ -47,5 +47,13 @@ describe("applyLoopGuard wiring", () => {
     };
     expect(applyLoopGuard(body, FORMATS.OPENAI, "openai", "vision-model")).toBe(false);
     expect(JSON.stringify(body.messages)).not.toContain("[ROUTER NOTE:");
+  });
+
+  it("fails open and logs when the guard cannot analyze the body", () => {
+    const hostile = { role: "assistant", get content() { throw new Error("boom"); } };
+    const body = { messages: [hostile, hostile, hostile] };
+    const log = { warn: vi.fn() };
+    expect(applyLoopGuard(body, FORMATS.OPENAI, "openai", "gpt-x", log)).toBe(false);
+    expect(log.warn).toHaveBeenCalledWith("LOOPGUARD", expect.stringContaining("guard failed open: boom"));
   });
 });

@@ -59,6 +59,7 @@ function extractToolNames(tools) {
  */
 export function applyLoopGuard(translatedBody, finalFormat, provider, model, log) {
   const loopCheck = detectLoop(translatedBody);
+  if (loopCheck.error) log?.warn?.("LOOPGUARD", `${provider}/${model} | guard failed open: ${loopCheck.error}`);
   if (!loopCheck.detected) return false;
   injectTerminationPrompt(translatedBody, finalFormat);
   const msgs = translatedBody?.messages;
