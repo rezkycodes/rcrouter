@@ -1075,6 +1075,12 @@ export async function handleComboChat({
       };
     };
 
+    // A member that can fall through to another member must not sit out a
+    // rate-limit cooldown (see cooldownRetry.js); only the last candidate may.
+    const addFallbackOptions = (targetOptions) => {
+      if (i < rotatedModels.length - 1) targetOptions.hasFallbackTarget = true;
+    };
+
     try {
       let result;
       trackActiveRequestStart(modelStr);
@@ -1085,6 +1091,7 @@ export async function handleComboChat({
           if (signal) targetOptions.signal = signal;
           if (queueDepth != null) targetOptions.maxQueueSize = queueDepth;
           addAffinityOptions(targetOptions, signal);
+          addFallbackOptions(targetOptions);
           result = await handleSingleModel(body, modelStr, Object.keys(targetOptions).length > 0 ? targetOptions : undefined);
         } else {
           const timeoutController = new AbortController();
@@ -1096,6 +1103,7 @@ export async function handleComboChat({
           if (targetSignal) targetOptions.signal = targetSignal;
           if (queueDepth != null) targetOptions.maxQueueSize = queueDepth;
           addAffinityOptions(targetOptions, targetSignal);
+          addFallbackOptions(targetOptions);
 
           const timeoutPromise = new Promise((resolve) => {
             timeoutId = setTimeout(() => {

@@ -51,6 +51,7 @@ import {
   isModelLockActive,
 } from "open-sse/services/accountFallback.js";
 import { getProxyHash } from "@/lib/network/connectionProxy.js";
+import { createCooldownGate, COOLDOWN_DECISION } from "open-sse/utils/cooldownRetry.js";
 import {
   acquire as acquireAccountSlot,
   markBlocked as markAccountBlocked,
@@ -471,6 +472,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
+  // One bounded wait per request when every account is rate-limited; a combo
+  // member that can fall through to another member never waits.
+  const cooldownGate = createCooldownGate({
+    settings: chatSettings,
+    signal: clientSignal,
+    hasFallbackTarget: options?.hasFallbackTarget === true,
+    log,
+    label: `${provider}/${model}`,
+  });
 
   // Lock order is deliberate: breaker gate -> provider mutex (inside
   // getProviderCredentials) -> account semaphore -> upstream request. The
@@ -481,6 +491,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       preferredConnectionId: options?.preferredConnectionId,
       requestedModel: requestedModel || model,
     });
+
+    // Every account cooling down: wait (holding no slot) for the earliest one, then re-select once.
+    if (credentials?.allRateLimited) {
+      const cooldownDecision = await cooldownGate.waitIfEligible(credentials);
+      if (cooldownDecision === COOLDOWN_DECISION.ABORTED) return new Response(null, { status: 499 });
+      if (cooldownDecision === COOLDOWN_DECISION.RETRY) {
+        excludeConnectionIds.clear();
+        continue;
+      }
+    }
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
