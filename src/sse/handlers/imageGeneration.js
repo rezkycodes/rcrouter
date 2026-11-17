@@ -16,6 +16,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui", "veoaifree-web"]);
@@ -45,11 +46,10 @@ function recordImageRequestUsage({ provider, model, connectionId, apiKey, endpoi
  * @param {Request} request
  */
 export async function handleImageGeneration(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    if (bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE) log.warn("IMAGE", "Request body too large");
+    return bodyError;
   }
 
   const url = new URL(request.url);

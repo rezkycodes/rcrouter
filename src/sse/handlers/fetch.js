@@ -11,6 +11,7 @@ import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -23,12 +24,10 @@ import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
  * @param {Request} request
  */
 export async function handleFetch(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("FETCH", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    log.warn("FETCH", bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE ? "Request body too large" : "Invalid JSON body");
+    return bodyError;
   }
 
   const reqUrl = new URL(request.url);

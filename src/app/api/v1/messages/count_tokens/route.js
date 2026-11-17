@@ -1,3 +1,6 @@
+import { readBoundedJson } from "@/sse/utils/boundedBody.js";
+import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -73,10 +76,9 @@ export function estimateAnthropicInputTokens(body = {}) {
  * POST /v1/messages/count_tokens - Mock token count response
  */
 export async function POST(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError?.status === HTTP_STATUS.PAYLOAD_TOO_LARGE) return bodyError;
+  if (bodyError) {
     return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
       status: 400,
       headers: { "Content-Type": "application/json", ...CORS_HEADERS }

@@ -1,4 +1,5 @@
 import { handleChat } from "@/sse/handlers/chat.js";
+import { readBoundedText } from "@/sse/utils/boundedBody.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { transformToOllama } from "open-sse/utils/ollamaTransform.js";
 
@@ -24,14 +25,17 @@ export async function OPTIONS() {
 export async function POST(request) {
   await ensureInitialized();
   
-  const clonedReq = request.clone();
+  // One bounded read (413 before parsing) instead of request.clone(), which would tee
+  // and buffer the whole body twice. handleChat gets the same bytes as a fresh Request.
+  const { text, error } = await readBoundedText(request);
+  if (error) return error;
+
   let modelName = "llama3.2";
   try {
-    const body = await clonedReq.json();
-    modelName = body.model || "llama3.2";
+    modelName = JSON.parse(text).model || "llama3.2";
   } catch {}
 
-  const response = await handleChat(request);
+  const response = await handleChat(new Request(request.url, { method: "POST", headers: request.headers, body: text }));
   return transformToOllama(response, modelName);
 }
 

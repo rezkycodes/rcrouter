@@ -1,4 +1,5 @@
 import { handleChat } from "@/sse/handlers/chat.js";
+import { cloneRequestWithJson, readBoundedJson } from "@/sse/utils/boundedBody.js";
 import { initTranslators } from "open-sse/translator/index.js";
 
 let initialized = false;
@@ -26,12 +27,10 @@ export async function OPTIONS() {
  */
 export async function POST(request) {
   await ensureInitialized();
-  const body = await request.json();
+  // Single bounded read of the socket (413 before JSON.parse); handleChat then
+  // re-reads only the small in-memory re-serialization.
+  const { body, error } = await readBoundedJson(request);
+  if (error) return error;
   body._compact = true;
-  const newRequest = new Request(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(body)
-  });
-  return await handleChat(newRequest);
+  return await handleChat(cloneRequestWithJson(request, body));
 }

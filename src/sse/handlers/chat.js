@@ -35,6 +35,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { extractClientSessionId } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
@@ -111,12 +112,11 @@ export async function handleChat(request, clientRawRequest = null) {
     observeMetric("router_chat_latency_ms", Date.now() - requestStartTime, { route: "chat" });
     return addCorrelationHeader(response, correlationId);
   };
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("CHAT", "Invalid JSON body");
-    return respond(errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body"));
+  // Bounded read: 413 before JSON.parse (see utils/boundedBody.js)
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    log.warn("CHAT", bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE ? "Request body too large" : "Invalid JSON body");
+    return respond(bodyError);
   }
 
   // Build clientRawRequest for logging (if not provided)

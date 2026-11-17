@@ -15,6 +15,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 
 const NO_AUTH_VIDEO_PROVIDERS = new Set(["veoaifree-web"]);
 import * as log from "../utils/logger.js";
+import { readBoundedBuffer, readBoundedText } from "../utils/boundedBody.js";
 
 // Video generation is xAI-only today; requests without a provider prefix
 // (bare model id, or multipart bodies we deliberately don't parse) land here.
@@ -63,7 +64,8 @@ async function requireValidApiKey(request) {
 async function readForwardableBody(request) {
   const contentType = request.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
-    const raw = await request.text();
+    const { text: raw, error: textError } = await readBoundedText(request);
+    if (textError) return { error: textError };
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -73,9 +75,11 @@ async function readForwardableBody(request) {
     return { raw, parsed, contentType };
   }
   // Multipart (or any other content type): forward the exact bytes — parsing
-  // and re-encoding FormData would change the multipart boundary.
-  const buf = Buffer.from(await request.arrayBuffer());
-  return { raw: buf, parsed: null, contentType };
+  // and re-encoding FormData would change the multipart boundary. Uploads use
+  // the larger MAX_UPLOAD_BODY_BYTES ceiling.
+  const { buffer, error: bufferError } = await readBoundedBuffer(request);
+  if (bufferError) return { error: bufferError };
+  return { raw: buffer, parsed: null, contentType };
 }
 
 async function resolveVideoProvider(parsedBody) {

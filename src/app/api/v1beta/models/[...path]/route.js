@@ -1,4 +1,5 @@
 import { handleChat } from "@/sse/handlers/chat.js";
+import { cloneRequestWithJson, readBoundedJson } from "@/sse/utils/boundedBody.js";
 import {
   clearAccountError,
   getProviderCredentials,
@@ -83,7 +84,8 @@ export async function POST(request, { params }) {
         .replace(":generateContent", "");
     }
 
-    const body = await request.json();
+    const { body, error: bodyError } = await readBoundedJson(request);
+    if (bodyError) return bodyError;
 
     if (isGeminiNativeTtsRequest(model, body)) {
       return await forwardGeminiNativeRequest(request, body, model, action);
@@ -98,13 +100,7 @@ export async function POST(request, { params }) {
     const convertedBody = convertGeminiToInternal(body, model, stream);
 
     // Create new request with converted body
-    const newRequest = new Request(request.url, {
-      method: "POST",
-      headers: request.headers,
-      body: JSON.stringify(convertedBody),
-    });
-
-    const response = await handleChat(newRequest);
+    const response = await handleChat(cloneRequestWithJson(request, convertedBody));
 
     if (stream) {
       // Transform OpenAI SSE => Gemini SSE on the fly.

@@ -14,6 +14,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
+import { readBoundedFormData } from "../utils/boundedBody.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -40,11 +41,11 @@ async function resolveCustomModelTransport(provider, model) {
 }
 
 export async function handleStt(request) {
-  let formData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart form data");
+  // Bounded read against the (larger) upload ceiling: 413 before multipart parsing
+  const { formData, error: bodyError } = await readBoundedFormData(request);
+  if (bodyError) {
+    if (bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE) log.warn("STT", "Request body too large");
+    return bodyError;
   }
 
   const modelStr = formData.get("model");

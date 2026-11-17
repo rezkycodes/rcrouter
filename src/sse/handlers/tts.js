@@ -11,6 +11,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 
 // Derived from providers.js: any TTS provider not noAuth requires stored credentials
 const CREDENTIALED_PROVIDERS = new Set(
@@ -20,11 +21,10 @@ const CREDENTIALED_PROVIDERS = new Set(
 );
 
 export async function handleTts(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    if (bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE) log.warn("TTS", "Request body too large");
+    return bodyError;
   }
 
   const url = new URL(request.url);

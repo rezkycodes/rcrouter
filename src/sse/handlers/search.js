@@ -11,6 +11,7 @@ import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
@@ -22,12 +23,10 @@ import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAc
  * @param {Request} request
  */
 export async function handleSearch(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("SEARCH", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    log.warn("SEARCH", bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE ? "Request body too large" : "Invalid JSON body");
+    return bodyError;
   }
 
   const url = new URL(request.url);
