@@ -17,9 +17,20 @@ test files, 2,410 assertions, and 101 failures. Those historical failures are
 now resolved by the current offline suite (0 failed suites/tests); the snapshot
 is retained as a regression floor and `pnpm test` reports the resolutions.
 
-`lint-current.json` is the equivalent reviewed ESLint snapshot: 137 errors and
-202 warnings. `pnpm lint` blocks new errors, while `pnpm lint:raw` shows every
+`lint-current.json` is the equivalent reviewed ESLint snapshot: 138 errors and
+243 warnings. `pnpm lint` blocks new errors, while `pnpm lint:raw` shows every
 existing error and warning.
+
+The gate matches errors by `file :: rule :: message`, and the react-hooks compiler
+messages embed a code frame with line numbers, so any edit above a known finding
+makes it look "new". The snapshot was regenerated after the upstream 9router
+v0.5.119 sync for exactly that reason: 45 of the 54 entries it reported were the
+same findings with shifted line numbers. The remaining nine were real additions
+from upstream code; three were fixed, six are accepted debt in
+`ModelSelectModal`, `CodexToolCard`, `combos/page`, `SmartPolicyModal` and
+`XiaomiMimoAuthModal`. Regenerate with
+`pnpm exec eslint . --format json --output-file tests/__baseline__/lint-current.json`
+and review the diff before committing.
 
 | Historical failure set | Count | Resolution |
 | --- | ---: | --- |
