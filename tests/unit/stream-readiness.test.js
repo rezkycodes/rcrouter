@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { awaitFirstChunk, describeReadinessFailure, READINESS_STATE } from "../../open-sse/utils/streamReadiness.js";
+import { awaitFirstChunk, describeReadError, READINESS_STATE, SETTLED } from "../../open-sse/utils/streamReadiness.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -49,27 +49,78 @@ describe("awaitFirstChunk", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("times out when no chunk arrives, cancels the upstream body and leaks no timer", async () => {
-    const upstream = controllableBody();
-    const pending = awaitFirstChunk(upstream.body, { timeoutMs: 25_000 });
+  describe("when no chunk arrives within the threshold", () => {
+    async function timedOut(timeoutMs = 25_000) {
+      const upstream = controllableBody();
+      const pending = awaitFirstChunk(upstream.body, { timeoutMs });
+      await vi.advanceTimersByTimeAsync(timeoutMs - 1);
+      let settled = false;
+      pending.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false); // not yet at the threshold
+      await vi.advanceTimersByTimeAsync(1);
+      return { upstream, result: await pending };
+    }
 
-    await vi.advanceTimersByTimeAsync(24_999);
-    expect(upstream.cancel).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    const result = await pending;
+    it("commits anyway (timeout state) without cancelling the upstream, and leaks no timer", async () => {
+      const { upstream, result } = await timedOut();
 
-    expect(result.state).toBe(READINESS_STATE.TIMEOUT);
-    expect(upstream.cancel).toHaveBeenCalledTimes(1);
-    expect(vi.getTimerCount()).toBe(0);
-  });
+      expect(result.state).toBe(READINESS_STATE.TIMEOUT);
+      expect(result.body).toBeInstanceOf(ReadableStream);
+      expect(upstream.cancel).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
 
-  it("ignores a chunk that shows up after the timeout", async () => {
-    const upstream = controllableBody();
-    const pending = awaitFirstChunk(upstream.body, { timeoutMs: 1_000 });
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect((await pending).state).toBe(READINESS_STATE.TIMEOUT);
+    it("delivers the late first chunk intact and in order, then the rest", async () => {
+      const { upstream, result } = await timedOut();
 
-    expect(() => upstream.push("late")).toThrow(); // controller already closed by the cancel
+      const reader = result.body.getReader();
+      const first = reader.read();
+      await vi.advanceTimersByTimeAsync(40_000);
+      upstream.push("data: late\n\n");
+      expect(decoder.decode((await first).value)).toBe("data: late\n\n");
+      expect(await result.firstSettled).toBe(SETTLED.DATA);
+
+      upstream.push("data: two\n\n");
+      upstream.close();
+      const rest = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        rest.push(decoder.decode(value));
+      }
+      expect(rest).toEqual(["data: two\n\n"]);
+    });
+
+    it("reports END (a clean empty stream) when upstream closes without data", async () => {
+      const { upstream, result } = await timedOut();
+      upstream.close();
+
+      expect(await result.firstSettled).toBe(SETTLED.END);
+      expect(await readAll(result.body)).toEqual([]);
+    });
+
+    it("surfaces a stall that ends in an upstream error as a stream error, not a success", async () => {
+      const { upstream, result } = await timedOut();
+      const reader = result.body.getReader();
+      const read = reader.read();
+      upstream.fail(new Error("upstream exploded"));
+
+      await expect(read).rejects.toThrow("upstream exploded");
+      expect(await result.firstSettled).toBe(SETTLED.ERROR);
+    });
+
+    it("cancelling during the wait cancels the upstream reader and is not reported as data or end", async () => {
+      const { upstream, result } = await timedOut();
+      const reader = result.body.getReader();
+      const read = reader.read();
+
+      await reader.cancel("client closed");
+      expect((await read).done).toBe(true);
+      expect(upstream.cancel).toHaveBeenCalledWith("client closed");
+      expect(await result.firstSettled).toBe(SETTLED.CANCELLED);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it("treats an upstream that closes without a byte as empty, not as a failure", async () => {
@@ -122,28 +173,20 @@ describe("awaitFirstChunk", () => {
   });
 });
 
-describe("describeReadinessFailure", () => {
-  it("maps a timeout to a 504 that names the bound", () => {
-    const failure = describeReadinessFailure({ state: READINESS_STATE.TIMEOUT }, { timeoutMs: 25_000 });
-    expect(failure.status).toBe(504);
-    expect(failure.errorCode).toBe("STREAM_READINESS_TIMEOUT");
-    expect(failure.message).toBe("[504]: no data from upstream within 25000ms (stream readiness timeout)");
-  });
-
+describe("describeReadError", () => {
   it("maps a pre-first-chunk read error to a 502 carrying the cause", () => {
-    const failure = describeReadinessFailure({ state: READINESS_STATE.ERROR, error: new Error("socket hang up") }, { timeoutMs: 25_000 });
+    const failure = describeReadError({ state: READINESS_STATE.ERROR, error: new Error("socket hang up") });
     expect(failure.status).toBe(502);
     expect(failure.errorCode).toBe("STREAM_READ_ERROR");
     expect(failure.message).toContain("socket hang up");
   });
 
   it("copes with an error without a message", () => {
-    const failure = describeReadinessFailure({ state: READINESS_STATE.ERROR }, { timeoutMs: 1_000 });
-    expect(failure.message).toContain("read error");
+    expect(describeReadError({ state: READINESS_STATE.ERROR }).message).toContain("read error");
   });
 
   it("never matches a rate-limit rule, so it is a plain transient failure for account fallback", () => {
-    const { message } = describeReadinessFailure({ state: READINESS_STATE.TIMEOUT }, { timeoutMs: 25_000 });
+    const { message } = describeReadError({ state: READINESS_STATE.ERROR, error: new Error("terminated") });
     expect(/rate limit|too many requests|quota exceeded|capacity|overloaded/i.test(message)).toBe(false);
   });
 });

@@ -15,6 +15,8 @@ import { SSE_KEEPALIVE } from "../../open-sse/config/resilienceConfig.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const THRESHOLD_MS = 25_000;
+const event = (text) => `data: {"choices":[{"delta":{"content":"${text}"}}]}\n\n`;
 
 function upstreamBody() {
   let controller;
@@ -72,113 +74,248 @@ function setup({ streamReadinessTimeoutMs } = {}) {
   return { upstream, run, streamController, abort, handleError, onRequestSuccess };
 }
 
-describe("handleStreamingResponse readiness gate", () => {
+// Passthrough emits a line and its blank terminator as separate chunks.
+async function readUntil(reader, predicate) {
+  let seen = "";
+  while (!predicate(seen)) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    seen += decoder.decode(value);
+  }
+  return seen;
+}
+
+// Starts the handler, lets the readiness threshold pass with no upstream data,
+// and returns the committed (unpeeked) response.
+async function commitWithoutData(options) {
+  const ctx = setup(options);
+  const pending = ctx.run();
+  await vi.advanceTimersByTimeAsync(options?.streamReadinessTimeoutMs ?? THRESHOLD_MS);
+  const result = await pending;
+  return { ...ctx, result, reader: result.response.body.getReader() };
+}
+
+describe("handleStreamingResponse readiness peek", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
-  it("fails with 504 after 25s without a first chunk, cancelling the upstream", async () => {
-    const { upstream, run, abort, handleError, onRequestSuccess } = setup();
-    const pending = run();
+  describe("no first chunk within the threshold", () => {
+    it("commits the response instead of failing over, keeping the upstream alive", async () => {
+      const ctx = setup();
+      const pending = ctx.run();
+      let settled = false;
+      pending.then(() => { settled = true; });
 
-    await vi.advanceTimersByTimeAsync(24_999);
-    expect(abort).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    const result = await pending;
+      await vi.advanceTimersByTimeAsync(THRESHOLD_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pending;
 
-    expect(result.success).toBe(false);
-    expect(result.status).toBe(504);
-    expect(result.error).toContain("stream readiness timeout");
-    expect(result.response.status).toBe(504);
-    expect((await result.response.json()).error.message).toContain("stream readiness timeout");
+      expect(result.success).toBe(true);
+      expect(result.response.status).toBe(200);
+      expect(result.response.headers.get("content-type")).toBe("text/event-stream");
+      expect(ctx.upstream.cancel).not.toHaveBeenCalled();
+      expect(ctx.abort).not.toHaveBeenCalled();
+      expect(ctx.handleError).not.toHaveBeenCalled();
+      expect(db.saveRequestDetail).toHaveBeenCalledTimes(1);
+      expect(db.appendRequestLog).not.toHaveBeenCalled();
+      await result.response.body.cancel();
+    });
 
-    expect(upstream.cancel).toHaveBeenCalledTimes(1);
-    expect(abort).toHaveBeenCalledTimes(1);
-    expect(handleError).toHaveBeenCalledTimes(1);
-    expect(onRequestSuccess).not.toHaveBeenCalled();
-    expect(db.saveRequestDetail).not.toHaveBeenCalled();
-    expect(db.appendRequestLog).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED 504", provider: "openai" }));
+    it("does not report upstream success at commit time", async () => {
+      const { onRequestSuccess, reader } = await commitWithoutData();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      await reader.cancel();
+    });
+
+    it("lets the keep-alive heartbeat cover the wait", async () => {
+      const { reader } = await commitWithoutData();
+
+      const first = reader.read();
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
+      expect(decoder.decode((await first).value)).toBe(SSE_KEEPALIVE.COMMENT);
+
+      const second = reader.read();
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
+      expect(decoder.decode((await second).value)).toBe(SSE_KEEPALIVE.COMMENT);
+      await reader.cancel();
+    });
+
+    it("delivers a late first chunk intact and in order, reporting success only then", async () => {
+      const { upstream, onRequestSuccess, reader } = await commitWithoutData();
+
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+
+      upstream.push(event("one"));
+      upstream.push(event("two"));
+      const received = await readUntil(reader, (text) => text.includes("two") && text.endsWith("\n\n"));
+      const payload = received.split(SSE_KEEPALIVE.COMMENT).join("");
+
+      expect(payload.indexOf("\"content\":\"one\"")).toBeGreaterThanOrEqual(0);
+      expect(payload.indexOf("\"content\":\"one\"")).toBeLessThan(payload.indexOf("\"content\":\"two\""));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+      await reader.cancel();
+    });
+
+    it("reports success when the stream ends cleanly after the threshold without data", async () => {
+      const { upstream, onRequestSuccess, reader } = await commitWithoutData();
+      upstream.close();
+
+      const text = await readUntil(reader, () => false);
+      expect(text).not.toContain("\"content\"");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+    });
+
+    it("surfaces a stall that ends in an upstream error as a stream error, with no retry and no success", async () => {
+      const { upstream, handleError, onRequestSuccess, result, reader } = await commitWithoutData();
+      const beat = reader.read();
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
+      expect(decoder.decode((await beat).value)).toBe(SSE_KEEPALIVE.COMMENT);
+
+      const read = reader.read();
+      upstream.fail(new Error("upstream exploded"));
+      await expect(read).rejects.toThrow("upstream exploded");
+
+      expect(result.success).toBe(true); // already committed: the error reaches the client as a stream error
+      expect(handleError).toHaveBeenCalledWith(expect.objectContaining({ message: "upstream exploded" }));
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      expect(db.appendRequestLog).not.toHaveBeenCalled();
+    });
+
+    it("cancels the upstream reader and clears every timer when the client aborts during the wait", async () => {
+      const { upstream, onRequestSuccess, reader } = await commitWithoutData();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await reader.cancel("client closed");
+      await vi.advanceTimersByTimeAsync(1_000); // lets the delayed abort of the stream controller fire
+
+      expect(upstream.cancel).toHaveBeenCalledTimes(1);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("closes gracefully, without reporting success, when the fetch is aborted during the wait", async () => {
+      const { upstream, streamController, onRequestSuccess, reader } = await commitWithoutData();
+      const read = reader.read();
+
+      streamController.abort();
+      upstream.fail(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+
+      expect((await read).done).toBe(true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("honours a configured threshold and clamps tiny values to 1s", async () => {
+      const configured = setup({ streamReadinessTimeoutMs: 5_000 });
+      const pendingConfigured = configured.run();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const committed = await pendingConfigured;
+      expect(committed.success).toBe(true);
+      await committed.response.body.cancel();
+
+      const clamped = setup({ streamReadinessTimeoutMs: 10 });
+      const pendingClamped = clamped.run();
+      let settled = false;
+      pendingClamped.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pendingClamped;
+      expect(result.success).toBe(true);
+      await result.response.body.cancel();
+    });
   });
 
-  it("succeeds when the first chunk arrives in time and reports success only then", async () => {
-    const { upstream, run, onRequestSuccess } = setup();
-    const pending = run();
+  describe("first chunk in time or a fast failure", () => {
+    it("succeeds when the first chunk arrives in time and reports success only then", async () => {
+      const { upstream, run, onRequestSuccess } = setup();
+      const pending = run();
 
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(onRequestSuccess).not.toHaveBeenCalled();
-    upstream.push("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n");
-    const result = await pending;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      upstream.push(event("hi"));
+      const result = await pending;
 
-    expect(result.success).toBe(true);
-    expect(result.response.headers.get("content-type")).toBe("text/event-stream");
-    await vi.advanceTimersByTimeAsync(0);
-    expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(true);
+      expect(result.response.headers.get("content-type")).toBe("text/event-stream");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onRequestSuccess).toHaveBeenCalledTimes(1);
 
-    const reader = result.response.body.getReader();
-    const { value } = await reader.read();
-    expect(decoder.decode(value)).toContain("\"content\":\"hi\"");
-    await reader.cancel();
-  });
+      const reader = result.response.body.getReader();
+      const { value } = await reader.read();
+      expect(decoder.decode(value)).toContain("\"content\":\"hi\"");
+      await reader.cancel();
+    });
 
-  it("honours a configured readiness timeout and clamps tiny values to 1s", async () => {
-    const configured = setup({ streamReadinessTimeoutMs: 5_000 });
-    const pendingConfigured = configured.run();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect((await pendingConfigured).status).toBe(504);
+    it("fails over on an upstream read error before the first chunk (502) and does not wait", async () => {
+      const { upstream, run, onRequestSuccess } = setup();
+      const pending = run();
+      upstream.fail(new Error("socket hang up"));
+      const result = await pending;
 
-    const clamped = setup({ streamReadinessTimeoutMs: 10 });
-    const pendingClamped = clamped.run();
-    await vi.advanceTimersByTimeAsync(999);
-    expect(clamped.abort).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    expect((await pendingClamped).status).toBe(504);
-  });
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(502);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      expect(db.appendRequestLog).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED 502", provider: "openai" }));
+    });
 
-  it("treats an upstream read error before the first chunk as a failure (502)", async () => {
-    const { upstream, run, onRequestSuccess } = setup();
-    const pending = run();
-    upstream.fail(new Error("socket hang up"));
-    const result = await pending;
+    it("treats a client abort during the peek as a fast failure and leaves no timer behind", async () => {
+      const { upstream, run, streamController, onRequestSuccess } = setup();
+      const pending = run();
 
-    expect(result.success).toBe(false);
-    expect(result.status).toBe(502);
-    expect(onRequestSuccess).not.toHaveBeenCalled();
-  });
+      streamController.abort();
+      upstream.fail(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+      const result = await pending;
 
-  it("keeps an upstream that closes without a byte as a normal (empty) success", async () => {
-    const { upstream, run } = setup();
-    const pending = run();
-    upstream.close();
-    const result = await pending;
+      expect(result.success).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
 
-    expect(result.success).toBe(true);
-    const reader = result.response.body.getReader();
-    const chunks = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(decoder.decode(value));
-    }
-    expect(chunks.join("")).not.toContain("keep-alive");
-  });
+    it("keeps an upstream that closes without a byte as a normal (empty) success", async () => {
+      const { upstream, run, onRequestSuccess } = setup();
+      const pending = run();
+      upstream.close();
+      const result = await pending;
 
-  it("keeps the client connection alive during later idle gaps", async () => {
-    const { upstream, run } = setup();
-    const pending = run();
-    upstream.push("data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n");
-    const result = await pending;
+      expect(result.success).toBe(true);
+      const reader = result.response.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+      expect(chunks.join("")).not.toContain("keep-alive");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+    });
 
-    const reader = result.response.body.getReader();
-    // Passthrough emits a line and its blank terminator as separate chunks.
-    let seen = "";
-    while (!seen.endsWith("\n\n")) seen += decoder.decode((await reader.read()).value);
-    expect(seen).toContain("\"content\":\"a\"");
+    it("keeps the client connection alive during later idle gaps", async () => {
+      const { upstream, run } = setup();
+      const pending = run();
+      upstream.push(event("a"));
+      const result = await pending;
 
-    const idle = reader.read();
-    await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
-    expect(decoder.decode((await idle).value)).toBe(SSE_KEEPALIVE.COMMENT);
-    await reader.cancel();
+      const reader = result.response.body.getReader();
+      const seen = await readUntil(reader, (text) => text.endsWith("\n\n"));
+      expect(seen).toContain("\"content\":\"a\"");
+
+      const idle = reader.read();
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
+      expect(decoder.decode((await idle).value)).toBe(SSE_KEEPALIVE.COMMENT);
+      await reader.cancel();
+    });
   });
 });

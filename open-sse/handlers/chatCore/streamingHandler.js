@@ -8,7 +8,7 @@ import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig
 import { SSE_KEEPALIVE, resolveStreamReadinessTimeoutMs } from "../../config/resilienceConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
-import { awaitFirstChunk, describeReadinessFailure, READINESS_STATE } from "../../utils/streamReadiness.js";
+import { awaitFirstChunk, describeReadError, READINESS_STATE, SETTLED } from "../../utils/streamReadiness.js";
 import { createErrorResult } from "../../utils/error.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
@@ -51,11 +51,11 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 }
 
 /**
- * The upstream gave no first chunk in time (or its read failed): release it and
+ * The upstream read failed before any chunk (a fast failure): release it and
  * return a normal failed result so account/combo fallback takes over.
  */
-function failStreamReadiness({ readiness, timeoutMs, provider, model, connectionId, streamController }) {
-  const failure = describeReadinessFailure(readiness, { timeoutMs });
+function failBeforeFirstChunk({ readiness, provider, model, connectionId, streamController }) {
+  const failure = describeReadError(readiness);
   const cause = new Error(failure.detail);
   cause.stack = undefined; // expected operational condition: keep the log line free of a stack dump
   if (streamController?.signal?.aborted) streamController.handleDisconnect?.("aborted_before_first_chunk");
@@ -65,13 +65,36 @@ function failStreamReadiness({ readiness, timeoutMs, provider, model, connection
   return { ...createErrorResult(failure.status, failure.message), errorCode: failure.errorCode };
 }
 
+// An upstream success clears the account's error state / circuit breaker, so it
+// is only reported for a stream that produced data (or ended cleanly).
+function reportUpstreamSuccess(onRequestSuccess) {
+  if (!onRequestSuccess) return;
+  Promise.resolve()
+    .then(onRequestSuccess)
+    .catch(err => {
+      console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
+    });
+}
+
+// Slow first chunk: the response is committed unpeeked, so success is reported
+// only once that first read really delivers data (or a clean end). A stall that
+// ends in an upstream error, or a client abort, never counts as success.
+function reportSuccessWhenFirstReadSettles(readiness, onRequestSuccess) {
+  readiness.firstSettled.then((outcome) => {
+    if (outcome === SETTLED.DATA || outcome === SETTLED.END) reportUpstreamSuccess(onRequestSuccess);
+  });
+}
+
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  *
- * Readiness gate: the first upstream chunk is awaited (streamReadinessTimeoutMs,
- * default 25s) BEFORE the response is committed, so a stalled upstream fails
- * over instead of hanging. Once committed, SSE keep-alive comments cover idle
- * gaps so edge proxies (Cloudflare 520/524) do not cut the connection.
+ * Readiness peek: the first upstream chunk is awaited up to streamReadinessTimeoutMs
+ * (default 25s) before the response is committed, so a FAST failure (read error
+ * before any chunk) still fails over. A slow first chunk is never cancelled:
+ * after the threshold the response is committed anyway and the SSE keep-alive
+ * (comment lines every 15s) covers the remaining wait, so edge proxies
+ * (Cloudflare 520/524) do not cut the connection. The setting is therefore the
+ * "commit headers + start heartbeat" threshold, not a failure timeout.
  */
 export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, customToolNames, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, credentials, providerThinking, streamReadinessTimeoutMs }) {
   // When upstream returns HTML/text instead of SSE (e.g. Cloudflare 5xx error
@@ -103,18 +126,14 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   const timeoutMs = resolveStreamReadinessTimeoutMs(PROVIDERS[provider]?.streamReadinessTimeoutMs ?? streamReadinessTimeoutMs);
   const readiness = await awaitFirstChunk(providerResponse.body, { timeoutMs });
-  if (readiness.state === READINESS_STATE.TIMEOUT || readiness.state === READINESS_STATE.ERROR) {
-    return failStreamReadiness({ readiness, timeoutMs, provider, model, connectionId, streamController });
+  if (readiness.state === READINESS_STATE.ERROR) {
+    return failBeforeFirstChunk({ readiness, provider, model, connectionId, streamController });
   }
-
-  // Only a stream that actually produced data (or ended cleanly) counts as an
-  // upstream success: it clears the account's error state / circuit breaker.
-  if (onRequestSuccess) {
-    Promise.resolve()
-      .then(onRequestSuccess)
-      .catch(err => {
-        console.error("[ChatCore] onRequestSuccess failed:", err?.message || err);
-      });
+  if (readiness.state === READINESS_STATE.TIMEOUT) {
+    log?.warn?.("STREAM", `${provider}/${model} no first chunk within ${timeoutMs}ms — committing response, keep-alive covers the wait`);
+    reportSuccessWhenFirstReadSettles(readiness, onRequestSuccess);
+  } else {
+    reportUpstreamSuccess(onRequestSuccess);
   }
 
   const transformStream = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, customToolNames, model, connectionId, body, onStreamComplete, apiKey, credentials, providerThinking });

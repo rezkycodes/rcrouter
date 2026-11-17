@@ -1,10 +1,14 @@
-// Resilience knobs: cooldown-aware retry, stream readiness gate, SSE keep-alive
+// Resilience knobs: cooldown-aware retry, stream readiness peek, SSE keep-alive
 // and the account-fallback loop cap. Constants and pure resolvers only; no I/O.
 //
 // Settings (src/lib/db/repos/settingsRepo.js merges RESILIENCE_SETTING_DEFAULTS):
 //   cooldownRetryEnabled     env COOLDOWN_RETRY_ENABLED       default true
 //   cooldownRetryMaxWaitMs   env COOLDOWN_RETRY_MAX_WAIT_MS   default 30000 (0..60000)
 //   streamReadinessTimeoutMs env STREAM_READINESS_TIMEOUT_MS  default 25000 (1000..120000)
+//     The "commit headers + start heartbeat" threshold, NOT a failure timeout:
+//     a fast failure before the first chunk still fails over, but once this much
+//     time passes with no byte the response is committed anyway and the SSE
+//     keep-alive covers the rest of the wait (the upstream is never cancelled).
 
 export const COOLDOWN_RETRY = Object.freeze({
   DEFAULT_ENABLED: true,
@@ -18,6 +22,8 @@ export const COOLDOWN_RETRY = Object.freeze({
   SETTLE_MARGIN_MS: 50,
 });
 
+// Threshold after which a still-silent upstream is committed to the client
+// (headers sent, heartbeat running) instead of being waited on pre-commit.
 export const STREAM_READINESS = Object.freeze({
   DEFAULT_TIMEOUT_MS: 25_000,
   MIN_TIMEOUT_MS: 1_000,

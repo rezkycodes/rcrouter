@@ -1,12 +1,20 @@
-// Stream readiness gate: wait (bounded) for the first upstream chunk before the
-// streaming response is committed to the client, so a stalled upstream becomes
-// a normal failure (account/combo fallback) instead of a response that hangs.
+// Stream readiness peek: wait (bounded) for the first upstream chunk so a FAST
+// failure becomes a normal failover, while a SLOW first chunk (big-context
+// prefill, reasoning models that stay silent until the first token) is never
+// cancelled. Mirrors VansRouter's peekStreamReadiness.
 //
-//   ready   first chunk arrived; `body` replays it, then the rest of the stream
-//   empty   upstream closed without a byte; `body` is an empty closed stream
-//           (kept as a success on purpose: that is what the pipe did before)
-//   timeout nothing within timeoutMs; the upstream reader/body was cancelled
-//   error   the read failed before the first chunk; the upstream was released
+//   ready    first chunk arrived in time; `body` replays it, then the rest
+//   empty    upstream closed without a byte; `body` is an empty closed stream
+//            (kept as a success on purpose: that is what the pipe did before)
+//   timeout  nothing within timeoutMs. NOT a failure: the in-flight read is
+//            kept, so `body` delivers the first real chunk intact and in order
+//            whenever it arrives. The caller commits the response now and the
+//            SSE keep-alive covers the rest of the wait. `firstSettled`
+//            resolves to SETTLED.DATA | END | ERROR | CANCELLED once that
+//            read settles, so success is only reported after real data.
+//   error    the read failed before the first chunk; the upstream was released
+//
+// timeoutMs is therefore the "commit headers + start heartbeat" threshold.
 
 export const READINESS_STATE = Object.freeze({
   READY: "ready",
@@ -15,28 +23,46 @@ export const READINESS_STATE = Object.freeze({
   ERROR: "error",
 });
 
+export const SETTLED = Object.freeze({
+  DATA: "data",
+  END: "end",
+  ERROR: "error",
+  CANCELLED: "cancelled",
+});
+
 const TIMED_OUT = Symbol("stream-readiness-timeout");
 
 function emptyStream() {
   return new ReadableStream({ start(controller) { controller.close(); } });
 }
 
-// Replays the peeked chunk, then forwards the same reader. Pull-based, so the
-// original backpressure behaviour is preserved (highWaterMark 1 holds the replay).
-function resumeStream(firstChunk, reader) {
-  return new ReadableStream({
-    start(controller) { controller.enqueue(firstChunk); },
+// Forwards `reader`, first replaying an already-read chunk (`firstChunk`) or
+// awaiting the in-flight first read (`pendingRead`). Pull-based, so the original
+// backpressure is preserved (highWaterMark 1 holds the replayed chunk).
+function resumeStream(reader, { firstChunk, pendingRead = null }) {
+  let cancelled = false;
+  let pending = pendingRead;
+  const body = new ReadableStream({
+    start(controller) {
+      if (firstChunk !== undefined) controller.enqueue(firstChunk);
+    },
     async pull(controller) {
       try {
-        const { done, value } = await reader.read();
+        const { done, value } = await (pending ?? reader.read());
+        pending = null;
+        if (cancelled) return;
         if (done) controller.close();
         else controller.enqueue(value);
       } catch (error) {
-        controller.error(error);
+        if (!cancelled) controller.error(error);
       }
     },
-    cancel(reason) { return reader.cancel(reason); },
+    cancel(reason) {
+      cancelled = true;
+      return reader.cancel(reason);
+    },
   }, { highWaterMark: 1 });
+  return { body, wasCancelled: () => cancelled };
 }
 
 // Cancel without awaiting (the fallback path must not block on a slow socket)
@@ -50,11 +76,23 @@ function abandon(reader, pendingRead, reason) {
   }
 }
 
+function lateStream(reader, firstRead) {
+  const { body, wasCancelled } = resumeStream(reader, { pendingRead: firstRead });
+  const firstSettled = firstRead.then(
+    (result) => {
+      if (wasCancelled()) return SETTLED.CANCELLED;
+      return result.done ? SETTLED.END : SETTLED.DATA;
+    },
+    () => SETTLED.ERROR,
+  );
+  return { state: READINESS_STATE.TIMEOUT, body, firstSettled };
+}
+
 /**
  * @param {ReadableStream|null} body - upstream response body
  * @param {object} options
- * @param {number} options.timeoutMs - max wait for the first chunk
- * @returns {Promise<{state: string, body?: ReadableStream|null, error?: Error}>}
+ * @param {number} options.timeoutMs - how long to wait for the first chunk before committing anyway
+ * @returns {Promise<{state: string, body?: ReadableStream|null, error?: Error, firstSettled?: Promise<string>}>}
  */
 export async function awaitFirstChunk(body, { timeoutMs }) {
   if (!body || typeof body.getReader !== "function") {
@@ -70,12 +108,10 @@ export async function awaitFirstChunk(body, { timeoutMs }) {
 
   try {
     const outcome = await Promise.race([firstRead, timeout]);
-    if (outcome === TIMED_OUT) {
-      abandon(reader, firstRead, new Error(`no upstream data within ${timeoutMs}ms`));
-      return { state: READINESS_STATE.TIMEOUT };
-    }
+    if (outcome === TIMED_OUT) return lateStream(reader, firstRead);
     if (outcome.done) return { state: READINESS_STATE.EMPTY, body: emptyStream() };
-    return { state: READINESS_STATE.READY, body: resumeStream(outcome.value, reader) };
+    const resumed = resumeStream(reader, { firstChunk: outcome.value });
+    return { state: READINESS_STATE.READY, body: resumed.body };
   } catch (error) {
     abandon(reader, firstRead, error);
     return { state: READINESS_STATE.ERROR, error };
@@ -85,14 +121,10 @@ export async function awaitFirstChunk(body, { timeoutMs }) {
 }
 
 /**
- * Client-facing failure details for a readiness outcome (timeout / error).
+ * Client-facing details for a read error before the first chunk (fast failure).
  * @returns {{ status: number, message: string, detail: string, errorCode: string }}
  */
-export function describeReadinessFailure(readiness, { timeoutMs }) {
-  if (readiness.state === READINESS_STATE.TIMEOUT) {
-    const detail = `no data from upstream within ${timeoutMs}ms (stream readiness timeout)`;
-    return { status: 504, message: `[504]: ${detail}`, detail, errorCode: "STREAM_READINESS_TIMEOUT" };
-  }
+export function describeReadError(readiness) {
   const detail = `upstream stream failed before the first chunk: ${readiness.error?.message || "read error"}`;
   return { status: 502, message: `[502]: ${detail}`, detail, errorCode: "STREAM_READ_ERROR" };
 }
