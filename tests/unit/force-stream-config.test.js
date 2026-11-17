@@ -157,3 +157,34 @@ describe("forceStream provider config", { timeout: 20_000 }, () => {
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
   });
 });
+
+// Non-forced provider: the mode follows the client's own `stream` field / Accept header.
+function makeDeepseekOptions({ bodyStream, accept }) {
+  const options = makeOptions(bodyStream);
+  options.modelInfo = { provider: "deepseek", model: "deepseek-chat" };
+  const headers = accept === undefined ? {} : { accept };
+  options.clientRawRequest = { ...options.clientRawRequest, headers };
+  return options;
+}
+
+describe("stream mode when the client omits the stream field", { timeout: 20_000 }, () => {
+  beforeEach(() => {
+    executeMock.mockReset();
+    executeMock.mockRejectedValue(new Error("boom"));
+  });
+
+  it.each([
+    ["no Accept header", { bodyStream: undefined, accept: undefined }, false],
+    ["Accept: */*", { bodyStream: undefined, accept: "*/*" }, false],
+    ["Accept: text/event-stream", { bodyStream: undefined, accept: "text/event-stream" }, true],
+    ["stream: true", { bodyStream: true, accept: undefined }, true],
+    ["stream: false", { bodyStream: false, accept: "text/event-stream" }, false],
+  ])("asks the executor for stream=%s-style mode (%s)", async (_label, input, expected) => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+
+    await handleChatCore(makeDeepseekOptions(input));
+
+    expect(executeMock).toHaveBeenCalledTimes(1);
+    expect(executeMock.mock.calls[0][0].stream).toBe(expected);
+  });
+});
