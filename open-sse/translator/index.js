@@ -1,5 +1,7 @@
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./concerns/toolCall.js";
+import { attachFittedToolNames, fitToolNames } from "./concerns/toolNameFit.js";
+import { resolveToolNameMaxLength } from "../config/toolNameLimits.js";
 import { prepareClaudeRequest, ensureTrailingUserTurn } from "./formats/claude.js";
 import { cloakClaudeTools, decloakStreamChunk } from "../utils/claudeCloaking.js";
 import { restoreToolNames } from "../utils/opencodeFingerprint.js";
@@ -77,6 +79,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // Normalize thinking config while preserving user and tool-result turns.
   normalizeThinkingConfig(result);
+
+  // Fit tool names longer than the target's limit (64 for most upstreams) BEFORE any
+  // translator runs, on the client-shaped body, so every target format sees names
+  // that fit. Copy-on-write: a body whose names already fit comes back as the same
+  // object. The reverse map is attached to the final body so responses can restore
+  // the original names (see utils/toolNameRestore.js).
+  const toolNameFit = fitToolNames(result, resolveToolNameMaxLength(targetFormat, PROVIDERS[provider]?.quirks));
+  result = toolNameFit.body;
 
   // Always ensure tool_calls have id (some providers require it)
   ensureToolCallIds(result);
@@ -179,7 +189,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   //   }
   // }
 
-  return result;
+  return attachFittedToolNames(result, toolNameFit.restoreMap);
 }
 
 // Translate response chunk: target -> openai -> source
