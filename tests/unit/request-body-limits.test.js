@@ -17,6 +17,7 @@ const { handleTts } = await import("../../src/sse/handlers/tts.js");
 const { handleImageGeneration } = await import("../../src/sse/handlers/imageGeneration.js");
 const { handleStt } = await import("../../src/sse/handlers/stt.js");
 const { handleVideoCreate } = await import("../../src/sse/handlers/videoGeneration.js");
+const { handleSystemone } = await import("../../src/sse/handlers/systemone.js");
 const { POST: countTokensPost } = await import("../../src/app/api/v1/messages/count_tokens/route.js");
 
 const JSON_LIMIT = 256;
@@ -61,6 +62,7 @@ const jsonEntryPoints = [
   ["POST /v1/audio/speech", handleTts, "/v1/audio/speech"],
   ["POST /v1/images/generations", handleImageGeneration, "/v1/images/generations"],
   ["POST /v1/messages/count_tokens", countTokensPost, "/v1/messages/count_tokens"],
+  ["POST /v1/systemone", handleSystemone, "/v1/systemone"],
 ];
 
 describe("every /v1 JSON entry point enforces the body ceiling before parsing", () => {

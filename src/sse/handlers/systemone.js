@@ -12,6 +12,7 @@ import { handleSystemoneCore } from "open-sse/handlers/systemoneCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
 
@@ -22,12 +23,11 @@ import { saveRequestUsage } from "@/lib/usageDb.js";
  * @param {Request} request
  */
 export async function handleSystemone(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    log.warn("SYSTEMONE", "Invalid JSON body");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  // Bounded read: 413 before JSON.parse (see utils/boundedBody.js)
+  const { body, error: bodyError } = await readBoundedJson(request);
+  if (bodyError) {
+    log.warn("SYSTEMONE", bodyError.status === HTTP_STATUS.PAYLOAD_TOO_LARGE ? "Request body too large" : "Invalid JSON body");
+    return bodyError;
   }
 
   const url = new URL(request.url);
