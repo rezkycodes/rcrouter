@@ -134,6 +134,13 @@ const getPageInfo = (pathname) => {
       icon: "lan",
       breadcrumbs: [],
     };
+  if (pathname.includes("/proxy-fitness"))
+    return {
+      title: "Proxy Fitness",
+      description: "Proxy pools that smart rotation is skipping for a provider or model",
+      icon: "network_check",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",

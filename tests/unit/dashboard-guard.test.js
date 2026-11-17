@@ -306,3 +306,41 @@ describe("dashboard guard helpers", () => {
     expect(__test__.extractApiKey(apiRequest)).toBe("header-key");
   });
 });
+
+describe("dashboard guard proxy fitness API", () => {
+  const FITNESS_ROUTES = [
+    ["GET", "/api/proxy-pools/fitness"],
+    ["POST", "/api/proxy-pools/fitness/clear-all"],
+    ["POST", "/api/proxy-pools/pool-1/fitness/clear"],
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  it.each(FITNESS_ROUTES)("rejects an unauthenticated %s %s with 401", async (_method, pathname) => {
+    const response = await proxy(request(pathname));
+
+    expect(response.status).toBe(401);
+  });
+
+  it.each(FITNESS_ROUTES)("rejects %s %s when only a public LLM API key is presented", async (_method, pathname) => {
+    mocks.validateApiKey.mockResolvedValue(true);
+
+    const response = await proxy(request(pathname, { authorization: "Bearer sk-valid-llm-key" }));
+
+    expect(response.status).toBe(401);
+  });
+
+  it.each(FITNESS_ROUTES)("lets a signed-in dashboard session through on %s %s", async (_method, pathname) => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+
+    const response = await proxy(request(pathname));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+});
