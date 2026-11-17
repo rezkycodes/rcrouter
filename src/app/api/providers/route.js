@@ -2,50 +2,13 @@ import { NextResponse } from "next/server";
 import {
   getProviderConnections,
   createProviderConnection,
-  getProviderNodeById,
   getProviderNodes,
-  getProxyPoolById,
 } from "@/models";
-import { APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
-import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { buildApiKeyConnectionInput } from "@/lib/providerConnectionInput";
 import { toProviderConnectionResponse } from "@/lib/providerConnectionResponse";
 
 export const dynamic = "force-dynamic";
-
-function normalizeProxyConfig(body = {}) {
-  const enabled = body?.connectionProxyEnabled === true;
-  const url = typeof body?.connectionProxyUrl === "string" ? body.connectionProxyUrl.trim() : "";
-  const noProxy = typeof body?.connectionNoProxy === "string" ? body.connectionNoProxy.trim() : "";
-
-  if (enabled && !url) {
-    return { error: "Connection proxy URL is required when connection proxy is enabled" };
-  }
-
-  return {
-    connectionProxyEnabled: enabled,
-    connectionProxyUrl: url,
-    connectionNoProxy: noProxy,
-  };
-}
-
-async function normalizeProxyPoolId(proxyPoolId) {
-  if (proxyPoolId === undefined || proxyPoolId === null || proxyPoolId === "" || proxyPoolId === "__none__") {
-    return { proxyPoolId: null };
-  }
-
-  const normalizedId = String(proxyPoolId).trim();
-  if (!normalizedId) {
-    return { proxyPoolId: null };
-  }
-
-  const proxyPool = await getProxyPoolById(normalizedId);
-  if (!proxyPool) {
-    return { error: "Proxy pool not found" };
-  }
-
-  return { proxyPoolId: normalizedId };
-}
 
 // GET /api/providers - List all connections
 export async function GET() {
@@ -108,110 +71,16 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const provider = normalizeProviderId(body.provider);
-    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
-    const proxyConfig = normalizeProxyConfig(body);
-    if (proxyConfig.error) {
-      return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
-    }
 
-    const proxyPoolResult = await normalizeProxyPoolId(body.proxyPoolId);
-    if (proxyPoolResult.error) {
-      return NextResponse.json({ error: proxyPoolResult.error }, { status: 400 });
-    }
-    const proxyPoolId = proxyPoolResult.proxyPoolId;
-
-    // Validation
-    const isWebCookieProvider = !!WEB_COOKIE_PROVIDERS[provider];
-    // Dual-auth providers (e.g. codebuddy-cn, xai) live under category "oauth" but also
-    // accept an API key via authModes — they aren't in APIKEY_PROVIDERS, so allow them here.
-    const supportsApiKeyMode = !!AI_PROVIDERS[provider]?.authModes?.includes("apikey");
-    const isValidProvider = APIKEY_PROVIDERS[provider] ||
-      FREE_TIER_PROVIDERS[provider] ||
-      supportsApiKeyMode ||
-      isWebCookieProvider ||
-      isOpenAICompatibleProvider(provider) ||
-      isAnthropicCompatibleProvider(provider) ||
-      isCustomEmbeddingProvider(provider);
-
-    if (!provider || !isValidProvider) {
-      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
-    }
-    // A provider may declare a providerSpecificData field that stands in for an API key — e.g.
-    // Bedrock's `profile`, where the credential lives in the local AWS config and there is no
-    // key to paste. Without this, following such a provider's own setup notice returns 400.
-    const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
-    const hasApiKeySubstitute = !!(apiKeySubstitute && body.providerSpecificData?.[apiKeySubstitute]);
-    if (!apiKey && provider !== "ollama-local" && !hasApiKeySubstitute) {
-      return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
-    }
-    const connectionName = name || displayName || AI_PROVIDERS[provider]?.name;
-    if (!connectionName) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
-    }
-
-    let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
-
-    // Compatible/embedding nodes: allow multiple connections per node for
-    // round-robin/sticky routing across accounts (multi-key load balancing).
-    if (isOpenAICompatibleProvider(provider)) {
-      const node = await getProviderNodeById(provider);
-      if (!node) {
-        return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
-      }
-      providerSpecificData = {
-        ...(providerSpecificData || {}),
-        prefix: node.prefix,
-        apiType: node.apiType,
-        baseUrl: node.baseUrl,
-        nodeName: node.name,
-      };
-    } else if (isAnthropicCompatibleProvider(provider)) {
-      const node = await getProviderNodeById(provider);
-      if (!node) {
-        return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
-      }
-      providerSpecificData = {
-        ...(providerSpecificData || {}),
-        prefix: node.prefix,
-        baseUrl: node.baseUrl,
-        nodeName: node.name,
-      };
-    } else if (isCustomEmbeddingProvider(provider)) {
-      const node = await getProviderNodeById(provider);
-      if (!node) {
-        return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
-      }
-      providerSpecificData = {
-        ...(providerSpecificData || {}),
-        prefix: node.prefix,
-        baseUrl: node.baseUrl,
-        nodeName: node.name,
-      };
-    }
-
-    const mergedProviderSpecificData = {
-      ...(providerSpecificData || {}),
-      connectionProxyEnabled: proxyConfig.connectionProxyEnabled,
-      connectionProxyUrl: proxyConfig.connectionProxyUrl,
-      connectionNoProxy: proxyConfig.connectionNoProxy,
-    };
-
-    if (proxyPoolId !== null) {
-      mergedProviderSpecificData.proxyPoolId = proxyPoolId;
+    // Validation, provider rules, node hydration and proxy defaults are shared with
+    // POST /api/providers/bulk (src/lib/providerConnectionInput.js).
+    const built = await buildApiKeyConnectionInput(body);
+    if (built.error) {
+      return NextResponse.json({ error: built.error }, { status: built.status });
     }
 
     const newConnection = await createProviderConnection({
-      provider,
-      authType: isWebCookieProvider ? "cookie" : "apikey",
-      name: connectionName,
-      apiKey: apiKey || "",
-      priority: priority || 1,
-      globalPriority: globalPriority || null,
-      defaultModel: defaultModel || null,
-      providerSpecificData: mergedProviderSpecificData,
-      isActive: true,
-      testStatus: testStatus || "unknown",
+      ...built.input,
       // POST with an id is an explicit edit of that connection; without one, a
       // name collision is refused rather than silently overwriting a key. #4311
       allowOverwrite: body.id ? true : (body.allowOverwrite === true || body.overwrite === true),

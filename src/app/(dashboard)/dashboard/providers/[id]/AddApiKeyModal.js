@@ -7,6 +7,37 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { planBulkAdd } from "@/shared/utils/bulkAdd";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
+// POST /api/providers/bulk accepts at most 500 connections per request.
+const BULK_CHUNK_SIZE = 500;
+
+async function isKeyValid(provider, apiKey) {
+  try {
+    const res = await fetch("/api/providers/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, apiKey }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return !!data.valid;
+  } catch {
+    return false;
+  }
+}
+
+// Returns how many items of the chunk were stored.
+async function saveBulkChunk(items) {
+  try {
+    const res = await fetch("/api/providers/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return Array.isArray(data.results) ? data.results.filter((r) => r.ok).length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
@@ -202,44 +233,26 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setSaving(true);
     setBulkResult(null);
     let success = 0;
-    let failed = 0;
+    // Validate each key before saving so bulk-added connections get a real status
+    // (active/unknown) like single adds, instead of a hardcoded "unknown" that
+    // never flips until a manual test.
+    const items = [];
     for (const entry of plan) {
-      try {
-        // Validate each key before saving so bulk-added connections get a
-        // real status (active/unknown) like single adds, instead of a
-        // hardcoded "unknown" that never flips until a manual test.
-        let isValid = false;
-        try {
-          const vres = await fetch("/api/providers/validate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ provider, apiKey: entry.apiKey }),
-          });
-          const vdata = await vres.json().catch(() => ({}));
-          isValid = !!vdata.valid;
-        } catch {
-          isValid = false;
-        }
-        const res = await fetch("/api/providers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider,
-            apiKey: entry.apiKey,
-            name: entry.name,
-            priority: 1,
-            testStatus: isValid ? "active" : "unknown",
-            ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
-          }),
-        });
-        if (res.ok) success++;
-        else failed++;
-      } catch {
-        failed++;
-      }
+      items.push({
+        provider,
+        apiKey: entry.apiKey,
+        name: entry.name,
+        testStatus: (await isKeyValid(provider, entry.apiKey)) ? "active" : "unknown",
+        ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
+      });
+    }
+    // One transactional request per chunk instead of one request per key; a failed
+    // chunk counts all of its items as failed and the next chunk still runs.
+    for (let i = 0; i < items.length; i += BULK_CHUNK_SIZE) {
+      success += await saveBulkChunk(items.slice(i, i + BULK_CHUNK_SIZE));
     }
     setSaving(false);
-    setBulkResult({ success, failed });
+    setBulkResult({ success, failed: plan.length - success });
     if (success > 0 && onBulkDone) onBulkDone();
   };
 

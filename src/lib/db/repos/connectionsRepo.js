@@ -301,6 +301,96 @@ export async function createProviderConnection(data) {
   return result;
 }
 
+const BULK_MAX_ITEMS = 500;
+const BULK_AUTH_TYPES = new Set(["apikey", "cookie"]);
+
+// One query per provider for the whole batch (not per item): the existing rows are
+// indexed by authType+name for collision checks and the next free priority is
+// tracked in memory as rows are appended.
+function loadBulkPool(db, provider) {
+  const byKey = new Map();
+  for (const row of db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [provider])) {
+    const conn = rowToConn(row);
+    byKey.set(`${conn.authType}\u0000${conn.name}`, conn);
+  }
+  const maxRow = db.get(`SELECT MAX(priority) AS m FROM providerConnections WHERE provider = ?`, [provider]);
+  return { byKey, lastPriority: maxRow?.m || 0 };
+}
+
+function insertBulkItem(db, pools, data) {
+  if (!data?.provider || !data?.apiKey || !data?.name) {
+    return { name: data?.name ?? null, ok: false, error: "provider, apiKey, and name are required" };
+  }
+  if (!pools.has(data.provider)) pools.set(data.provider, loadBulkPool(db, data.provider));
+  const pool = pools.get(data.provider);
+  const authType = BULK_AUTH_TYPES.has(data.authType) ? data.authType : "apikey";
+  const key = `${authType}\u0000${data.name}`;
+  const existing = pool.byKey.get(key);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    // Same rule as createProviderConnection: a name collision never silently
+    // replaces a stored key unless the caller opts in. #4311
+    if (data.allowOverwrite !== true) {
+      return {
+        name: data.name, ok: false, code: "PROVIDER_NAME_CONFLICT", existingId: existing.id,
+        error: `A connection named "${existing.name}" already exists for provider "${data.provider}".`,
+      };
+    }
+    const { allowOverwrite: _allow, priority: _priority, ...patch } = data;
+    const merged = { ...existing, ...resetHealthStateOnActivation(existing, patch), authType, updatedAt: now };
+    upsert(db, merged);
+    pool.byKey.set(key, merged);
+    return { name: data.name, ok: true, id: existing.id, updated: true };
+  }
+
+  // Appended in paste order after the current pool. An explicit priority from the
+  // caller is ignored: the dashboard sends 1 for every item, which would pile the
+  // whole batch onto one priority and scramble the display order.
+  pool.lastPriority += 1;
+  const conn = {
+    id: uuidv4(),
+    provider: data.provider,
+    authType,
+    name: data.name,
+    priority: pool.lastPriority,
+    isActive: data.isActive !== undefined ? data.isActive : true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  for (const f of OPTIONAL_FIELDS) {
+    if (data[f] !== undefined && data[f] !== null) conn[f] = data[f];
+  }
+  if (data.providerSpecificData && Object.keys(data.providerSpecificData).length > 0) {
+    conn.providerSpecificData = data.providerSpecificData;
+  }
+  upsert(db, conn);
+  pool.byKey.set(key, conn);
+  return { name: data.name, ok: true, id: conn.id, updated: false };
+}
+
+/**
+ * Create many API-key / cookie connections in ONE transaction. Per-item problems
+ * (missing field, name collision) come back as `{ ok: false }` results while the
+ * rest of the batch is still saved; a database error rolls the whole batch back.
+ *
+ * @param {object[]} items connection inputs (provider, name, apiKey, ...)
+ * @returns {Promise<Array<{name: string|null, ok: boolean, id?: string, updated?: boolean, code?: string, error?: string}>>}
+ */
+export async function createProviderConnectionsBulk(items) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > BULK_MAX_ITEMS) {
+    throw new Error(`Bulk connection batch must contain 1-${BULK_MAX_ITEMS} items`);
+  }
+  const db = await getAdapter();
+  const results = [];
+  db.transaction(() => {
+    const pools = new Map();
+    for (const data of items) results.push(insertBulkItem(db, pools, data));
+  });
+  invalidateConnectionCache();
+  return results;
+}
+
 // Critical: OAuth refresh token race — atomic merge inside transaction
 export async function updateProviderConnection(id, data) {
   const db = await getAdapter();
