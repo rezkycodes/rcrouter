@@ -17,6 +17,10 @@ Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specif
 - Dockerfile now uses the `ALPINE_MIRROR`/`NPM_REGISTRY` build args and ships `ffmpeg` (Codex STT audio conversion); CI workflow left as RcRouter's own.
 - Tests adapted where upstream behavior superseded ours (tool-result images, request-scoped 4xx advance, `validateApiKey` returns the key record, usage `byApiKey` buckets keyed by full key).
 
+## Fixes
+
+- **Omitted `stream` field**: a client that leaves `stream` out of an OpenAI Chat Completions, Anthropic Messages or OpenAI Responses request now gets a plain JSON reply, as those APIs define. Before, the router asked the upstream for SSE without telling it `stream: true`, so OpenAI-compatible upstreams answered JSON that was then served as `text/event-stream` (followed by `[DONE]`, with shortened tool names not restored). `Accept: text/event-stream` without `application/json` still selects SSE; an explicit `stream`, `forceStream` providers and the Gemini family are unchanged.
+
 ## Selective ports from VansRouter v0.91.87
 
 - **LoopGuard hardening**: repeat-sequence length capped at 6, per-message sentence de-duplication, texts over 4 KB skipped, detection limited to the 40 most recent tool calls / 20 most recent assistant messages, and the guard never throws (fail-open).
@@ -24,6 +28,9 @@ Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specif
 - **Request body ceiling**: every `/v1` entry point reads its body through `src/sse/utils/boundedBody.js` and answers 413 `request_entity_too_large` before parsing. Limits: `MAX_REQUEST_BODY_BYTES` (64 MiB, JSON) and `MAX_UPLOAD_BODY_BYTES` (128 MiB, multipart/binary); invalid values fall back to the defaults.
 - **Cooldown-aware retry**: when every account of a provider is rate-limited and the earliest reset is within `cooldownRetryMaxWaitMs` (30 s, clamp 0..60 s), the request waits once (holding no semaphore slot, abortable) and re-selects. Combo members that can fall through never wait. Toggle with `cooldownRetryEnabled` / `COOLDOWN_RETRY_ENABLED`.
 - **Stream resilience**: SSE keep-alive comments every 15 s on idle streams; if no first upstream chunk arrives within `streamReadinessTimeoutMs` (25 s, clamp 1..120 s) the response is committed and kept alive instead of failing over; fast failures before the first chunk still fall back; the per-request account fallback loop is capped at `min(accounts, 6)`.
+- **Antigravity `VALIDATION_REQUIRED`**: a 403 asking the account owner to verify in a browser now holds the account out of rotation for 24 h (it used the generic 2-minute 403 rule and burned a fallback slot per request). The quota probe reports such an account as ineligible instead of "Chat may still work", and logs the reason.
+- **Bulk add of API-key connections**: `POST /api/providers/bulk` saves 1-500 connections in one transaction (whole batch validated first; a name collision never overwrites a stored key; paste order kept). The single-add route now shares its validation with it (`src/lib/providerConnectionInput.js`), and the dashboard's Bulk Add uses one request per 500 keys, still validating each key first.
+- **Durable proxy-pool fitness**: "pool unfit for provider::model" marks are stored in SQLite (migration 003, new `proxyPoolFitness` table; the live database is upgraded on the next start, with the automatic pre-change backup) instead of being lost on restart. New routes `GET /api/proxy-pools/fitness`, `POST /api/proxy-pools/fitness/clear-all`, `POST /api/proxy-pools/[id]/fitness/clear` and a **Proxy Fitness** dashboard page. Database errors never affect request serving (fail open).
 - Adapted rather than copied: 413 goes through RcRouter's `errorResponse`; cooldown waits only on rate-limit-class locks; tool-name suffixes are hash-based (order-independent) instead of counters.
 
 # v1.0.1 (2026-09-15)
