@@ -457,7 +457,7 @@ describe("App-layer custom transport resolution (stt.js)", () => {
       const fd = mkFormData();
       fd.set("model", "gemini/probe-sttjs-1");
 
-      const pending = handleStt({ formData: async () => fd });
+      const pending = handleStt(new Request("https://rc.local/v1/audio/transcriptions", { method: "POST", body: fd }));
       await vi.waitFor(() => expect(FakeWS.instances.length).toBe(1));
       const ws = FakeWS.instances[0];
       await vi.waitFor(() => expect(ws.sent.length).toBeGreaterThanOrEqual(1)); // setup first

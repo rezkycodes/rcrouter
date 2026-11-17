@@ -174,7 +174,7 @@ describe("handleStreamingResponse readiness peek", () => {
       expect(onRequestSuccess).toHaveBeenCalledTimes(1);
     });
 
-    it("surfaces a stall that ends in an upstream error as a stream error, with no retry and no success", async () => {
+    it("surfaces a stall that ends in an upstream error as an SSE error event, with no retry and no success", async () => {
       const { upstream, handleError, onRequestSuccess, result, reader } = await commitWithoutData();
       const beat = reader.read();
       await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE.INTERVAL_MS);
@@ -182,7 +182,12 @@ describe("handleStreamingResponse readiness peek", () => {
 
       const read = reader.read();
       upstream.fail(new Error("upstream exploded"));
-      await expect(read).rejects.toThrow("upstream exploded");
+      // The merged pipeline (upstream 9router stream-error handling) turns a post-commit failure
+      // into a protocol-correct SSE error event + [DONE] instead of tearing the connection down.
+      const failure = decoder.decode((await read).value);
+      expect(failure).toContain("\"error\"");
+      expect(failure).toContain("data: [DONE]");
+      expect((await reader.read()).done).toBe(true);
 
       expect(result.success).toBe(true); // already committed: the error reaches the client as a stream error
       expect(handleError).toHaveBeenCalledWith(expect.objectContaining({ message: "upstream exploded" }));
@@ -209,7 +214,9 @@ describe("handleStreamingResponse readiness peek", () => {
       streamController.abort();
       upstream.fail(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
 
-      expect((await read).done).toBe(true);
+      // Terminates with the same error event + [DONE] (the client is gone anyway); no success is reported.
+      expect(decoder.decode((await read).value)).toContain("data: [DONE]");
+      expect((await reader.read()).done).toBe(true);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(onRequestSuccess).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
