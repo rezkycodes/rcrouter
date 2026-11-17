@@ -97,6 +97,8 @@ export async function deleteProxyPool(id) {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     removed = rowToPool(row);
+    // Same transaction: a deleted pool must not leave fitness rows behind.
+    db.run(`DELETE FROM proxyPoolFitness WHERE poolId = ?`, [id]);
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
   });
   return removed;

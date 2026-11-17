@@ -62,9 +62,10 @@ describe("apiKeys access columns: upgrade from the previous schema", () => {
     expect(await db.validateApiKey("sk-legacy-one")).toMatchObject({ key: "sk-legacy-one", isActive: true });
     expect((await db.getApiKeyByKey("sk-legacy-one")).access.restricted).toBe(false);
 
-    // The schema bump took the pre-change safety backup.
+    // The schema bump took the pre-change safety backup. The target is the current
+    // SCHEMA_VERSION (not hard-coded) so later additive schema bumps keep this true.
     const backups = fs.readdirSync(path.join(tempDir, "db", "backups"));
-    expect(backups.some((d) => d.startsWith("schema-1-to-2"))).toBe(true);
+    expect(backups.some((d) => /^schema-1-to-\d+-/.test(d))).toBe(true);
   });
 
   it("persists access through update, new keys default to unrestricted", async () => {
