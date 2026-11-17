@@ -240,7 +240,15 @@ async function _doRefresh(connectionId, accessToken, providerSpecificData, now) 
     const usage = await getAntigravityUsage(accessToken, providerSpecificData, proxyOptions);
     // 401/403 usage responses can contain an empty quotas object plus message.
     // Preserve known cache instead of replacing it with an upstream error response.
-    if (!usage?.quotas || usage.message) return null;
+    if (!usage?.quotas || usage.message) {
+      // Do not swallow the reason: a bare null is indistinguishable from "no data
+      // yet", so an account Google marked ineligible would look identical to a
+      // healthy one until a real chat request 403s.
+      if (usage?.message) {
+        log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | quota unavailable: ${usage.message}`);
+      }
+      return null;
+    }
 
     // Update in-memory cache. Caller logs CACHE_BLOCK only if requested model is exhausted.
     // Strike blocks are re-asserted after every refresh so an optimistic
