@@ -194,10 +194,14 @@ describe("connect run()", () => {
   beforeEach(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), "9r-connect-run-"));
     vi.spyOn(os, "homedir").mockReturnValue(home);
+    // crush resolves its config under $XDG_CONFIG_HOME before ~/.config; without this the
+    // test writes to the real config dir (and fails to find it) wherever the variable is set.
+    vi.stubEnv("XDG_CONFIG_HOME", "");
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     fs.rmSync(home, { recursive: true, force: true });
   });
 

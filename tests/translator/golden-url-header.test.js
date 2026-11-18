@@ -1,6 +1,7 @@
 // P0 GOLDEN: lock buildUrl + buildHeaders cho mọi provider trên code CŨ.
 // Sinh snapshot lần đầu (baseline) → sau refactor chạy lại phải khớp y hệt.
 // Mock proxyFetch + uuid-heavy executors KHÔNG cần ở đây vì chỉ gọi buildUrl/buildHeaders (pure).
+import { createRequire } from "node:module";
 import { describe, it, expect } from "vitest";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
@@ -25,10 +26,13 @@ const SPECIALIZED = new Set([
 
 // Per-process / per-request values: kimi's random device name, minimax's session UUID.
 // codebuddy-intl mints fresh conversation/request UUIDs on every buildHeaders() call.
+// x-mavis-timezone-offset is the machine's UTC offset in seconds (CI runs in UTC).
 const VOLATILE_HEADERS = new Set([
-  "x-msh-device-name", "x-mavis-session-id",
+  "x-msh-device-name", "x-mavis-session-id", "x-mavis-timezone-offset",
   "x-conversation-id", "x-conversation-message-id", "x-conversation-request-id", "x-request-id",
 ]);
+
+const APP_VERSION = createRequire(import.meta.url)("../../package.json").version;
 
 // Sanitize header: khử token + field thời gian động (kimi X-Msh-Device-Id) để snapshot ổn định.
 function sanitize(headers) {
@@ -40,7 +44,10 @@ function sanitize(headers) {
       continue;
     }
 
+    // The app's own version (X-Msh-Version, X-CLIENT-VERSION, ...) changes on every
+    // release; it is not part of the header contract.
     let value = v
+      .split(APP_VERSION).join("<APP_VERSION>")
       .replace(/Bearer .+/, "Bearer <TOK>")
       .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
       .replace(/kimi-\d{10,}/g, "kimi-<TS>");
