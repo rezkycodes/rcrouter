@@ -48,6 +48,13 @@ RUN --mount=type=cache,target=/root/.npm \
       --fetch-timeout=300000 \
       wreq-js playwright-core
 
+# playwright-core is also a (dev)dependency of this pnpm workspace, so Next's
+# tracing DOES put it into the standalone output, as a symlink into .pnpm/.
+# The runner cannot copy the real directory installed above over that symlink
+# ("cannot copy to non-directory"), so drop the link; the lazy-runtime copy
+# replaces it. Absent link is fine (-f).
+RUN rm -rf /app/.next/standalone/node_modules/playwright-core
+
 FROM ${NODE_IMAGE} AS runner
 ARG ALPINE_MIRROR
 ARG APP_VERSION
