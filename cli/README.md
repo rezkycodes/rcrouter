@@ -6,11 +6,8 @@
 
 [![npm](https://img.shields.io/npm/v/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
 [![Downloads](https://img.shields.io/npm/dm/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
-[![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-[![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-[![License](https://img.shields.io/npm/l/rcrouter.svg)](https://github.com/rezkycodes/rcrouter/blob/main/LICENSE)
-
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+[![GHCR](https://img.shields.io/badge/GHCR-rezkycodes%2Frcrouter-blue?logo=github)](https://github.com/rezkycodes/rcrouter/pkgs/container/rcrouter)
+[![License](https://img.shields.io/npm/l/@rezkycodes/rcrouter.svg)](https://github.com/rezkycodes/rcrouter/blob/main/LICENSE)
 
 [📖 Documentation](https://github.com/rezkycodes/rcrouter)
 
@@ -49,18 +46,18 @@ pnpm i -g @rezkycodes/rcrouter
 rcrouter
 
 # Or run directly with npx
-npx rcrouter
+npx @rezkycodes/rcrouter
 ```
 
 **Option 2 — Docker (server/VPS):**
 
 ```bash
-docker run -d --name 9router -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data \
-  decolua/9router:latest
+docker run -d --name rcrouter -p 20128:20128 \
+  -v "$HOME/.rcrouter:/app/data" -e DATA_DIR=/app/data \
+  ghcr.io/rezkycodes/rcrouter:latest
 ```
 
-Published images: [Docker Hub](https://hub.docker.com/r/decolua/9router) • [GHCR](https://github.com/decolua/9router/pkgs/container/9router) (multi-platform amd64/arm64).
+Published image: [GHCR](https://github.com/rezkycodes/rcrouter/pkgs/container/rcrouter) (multi-platform amd64/arm64).
 
 🎉 Dashboard opens at `http://localhost:20128`
 
@@ -95,15 +92,19 @@ rcrouter --help             # Show all options
 
 ---
 
-## 🔌 Connect to a Remote 9Router
+## 🔌 Connect to a Remote RcRouter
 
-Already running 9Router on another machine (e.g. a team server on your LAN)? Point this machine's CLI tools at it — no local server is started:
+Already running RcRouter on another machine (e.g. a team server on your LAN)? Point this machine's CLI tools at it — no local server is started:
 
 ```bash
-npx 9router connect http://<server-host>:20128                       # pick tools interactively
-npx 9router connect http://<server-host>:20128 --tools claude,codex  # or choose up front
-npx 9router connect --reset --tools claude,codex                     # undo
+rcrouter connect http://<server-host>:20128                       # pick tools interactively
+rcrouter connect http://<server-host>:20128 --tools claude,codex  # or choose up front
+rcrouter connect --reset --tools claude,codex                     # undo
 ```
+
+Without a global install, run `npx @rezkycodes/rcrouter connect …` instead of `rcrouter connect …`.
+
+For compatibility with existing setups the identifiers written to tool configs keep the `9router` name (provider id, `*.bak-9router` backups, `NINE_ROUTER_PASSWORD`, `~/.9router/connect.env`).
 
 It logs in with the dashboard password (hidden prompt), reuses or creates an API key named `cli-<hostname>`, and writes each tool's config (backing up the original once as `*.bak-9router`).
 
@@ -124,35 +125,35 @@ Models come from the **server's own CLI-tools configuration**, so a client gets 
 
 ```bash
 # One Claude tier; the other tiers still come from the server
-npx 9router connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
+rcrouter connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
 
 # Every Claude tier
-npx 9router connect http://<server-host>:20128 --tools claude \
+rcrouter connect http://<server-host>:20128 --tools claude \
   --fable cc/claude-fable-5-2 --opus cc/claude-opus-5-5 \
   --sonnet cc/claude-sonnet-5-5 --haiku cc/claude-haiku-4-5-20251001
 
 # All non-Claude tools at once
-npx 9router connect http://<server-host>:20128 --tools codex,opencode,kilo --model ocg/deepseek-flash
+rcrouter connect http://<server-host>:20128 --tools codex,opencode,kilo --model ocg/deepseek-flash
 
 # Claude and other tools in one run
-npx 9router connect http://<server-host>:20128 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
+rcrouter connect http://<server-host>:20128 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
 
 # A different model per tool: --model covers every non-Claude tool in a run, so run once per tool
-npx 9router connect http://<server-host>:20128 --tools codex --model gpt-6
-npx 9router connect http://<server-host>:20128 --tools opencode --model ocg/glm-5.3
+rcrouter connect http://<server-host>:20128 --tools codex --model gpt-6
+rcrouter connect http://<server-host>:20128 --tools opencode --model ocg/glm-5.3
 ```
 
 A model the server doesn't list is still written, with a `not listed by server` warning. To see the ids it serves: `curl http://<server-host>:20128/v1/models -H "Authorization: Bearer <your key>"`.
 
 ### Checking the current config
 
-`9router show` prints what each CLI tool on this machine is currently set to — base URL, masked API key and models. It only reads local files and never contacts a server.
+`rcrouter show` prints what each CLI tool on this machine is currently set to — base URL, masked API key and models. It only reads local files and never contacts a server.
 
 ```bash
-npx 9router show                 # every supported tool
-npx 9router show claude          # one tool
-npx 9router show claude codex    # several
-npx 9router show claude --json   # machine-readable (key still masked)
+rcrouter show                 # every supported tool
+rcrouter show claude          # one tool
+rcrouter show claude codex    # several
+rcrouter show claude --json   # machine-readable (key still masked)
 ```
 
 ```
@@ -166,7 +167,7 @@ npx 9router show claude --json   # machine-readable (key still masked)
      sonnet  cc/claude-sonnet-5-5
 ```
 
-Tools not pointed at 9router are listed as `not configured`. For Codex, OpenCode and Cline it also warns when a 9router entry exists but another provider is the active one.
+Tools not pointed at RcRouter are listed as `not configured`. For Codex, OpenCode and Cline it also warns when a `9router` entry exists but another provider is the active one.
 
 ### Other options
 
@@ -177,9 +178,9 @@ Tools not pointed at 9router are listed as `not configured`. For Codex, OpenCode
 | `--api-key <key>` | Use this key and skip login. The server's models can't be read without a login, so pass model flags |
 | `--key-name <name>` | API key name to reuse/create (default `cli-<hostname>`) |
 | `--print-env` | Also print `OPENAI_BASE_URL` / `OPENAI_API_KEY` for other CLIs |
-| `--reset` | Remove the 9router settings from the selected tools |
+| `--reset` | Remove the RcRouter (`9router`-named) settings from the selected tools |
 
-See `9router connect --help` for the full list.
+See `rcrouter connect --help` for the full list.
 
 > ⚠️ Over plain `http://` the password and API key are sent unencrypted — use a trusted LAN/VPN or put HTTPS in front. The API key is stored in each tool's config file.
 
@@ -195,9 +196,11 @@ Any tool supporting OpenAI/Claude-compatible API works.
 
 ## 💾 Data Location
 
-- **macOS/Linux**: `~/.9router/db/data.sqlite`
-- **Windows**: `%APPDATA%/9router/db/data.sqlite`
-- **Docker**: `/app/data/db/data.sqlite` (mount `$HOME/.9router` to persist)
+- **macOS/Linux**: `~/.rcrouter/db/data.sqlite`
+- **Windows**: `%APPDATA%/rcrouter/db/data.sqlite`
+- **Docker**: `/app/data/db/data.sqlite` (mount `$HOME/.rcrouter` to persist)
+
+On first start, an existing `~/.9router` database (from 9router) is copied to the new location; the original is left untouched.
 
 ---
 
@@ -212,8 +215,9 @@ Full docs, advanced setup, video tutorials & development guide:
 
 ## 🙏 Acknowledgments
 
+- **[9router](https://github.com/decolua/9router)** by decolua and contributors - RcRouter is based on this project, used under the MIT License (their copyright notice is kept in [LICENSE](LICENSE))
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** - Original Go implementation
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) for details. Third-party components keep their own licenses.

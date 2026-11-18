@@ -291,3 +291,4 @@ wire_api = "responses"
 
 - **Upstream Project:** [decolua/9router](https://github.com/decolua/9router)
 - **License:** MIT License (Open Source)
+- **Copyright:** the original notice ("decolua and contributors") is kept unchanged in [LICENSE](LICENSE); third-party dependencies keep their own licenses.

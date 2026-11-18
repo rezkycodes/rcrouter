@@ -3,6 +3,7 @@
   "version": "1.1.1",
   "packageManager": "pnpm@11.5.2",
   "description": "RcRouter web dashboard",
+  "license": "MIT",
   "bin": {
     "rcrouter": "./bin/rcrouter.js"
   },
