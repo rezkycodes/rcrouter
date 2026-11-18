@@ -20,11 +20,10 @@ import {
   orderModelsByChoice,
 } from "./systemoneRouter.js";
 
-// Strip "combo/" prefix from model string (e.g. "combo/coding-stack" → "coding-stack")
-export function stripComboPrefix(modelStr) {
-  if (typeof modelStr !== "string") return modelStr;
-  return modelStr.startsWith("combo/") ? modelStr.slice(6) : modelStr;
-}
+// Strip "combo/" prefix from model string (e.g. "combo/coding-stack" → "coding-stack").
+// Defined in comboPrefix.js (shared with the model catalog and resolver); re-exported here.
+import { stripComboPrefix } from "./comboPrefix.js";
+export { stripComboPrefix };
 
 export { DEFAULT_COMBO_TARGET_TIMEOUT_MS };
 
@@ -306,13 +305,15 @@ export function resetComboRotation(comboName) {
  * @returns {string[]|null} Array of models or null if not a combo
  */
 export function getComboModelsFromData(modelStr, combosData) {
-  // Don't check if it's in provider/model format
-  if (modelStr.includes("/")) return null;
-  
+  // The catalog publishes combos as "combo/<name>"; accept that id as well as the bare name.
+  const name = stripComboPrefix(modelStr);
+  // Any other provider/model format is not a combo
+  if (name.includes("/")) return null;
+
   // Handle both array and object formats
   const combos = Array.isArray(combosData) ? combosData : (combosData?.combos || []);
-  
-  const combo = combos.find(c => c.name === modelStr);
+
+  const combo = combos.find(c => c.name === name);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

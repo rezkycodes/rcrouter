@@ -29,6 +29,7 @@ import {
   parseResetTimestampMs,
 } from "open-sse/services/combo.js";
 import { isAutoCombo, resolveAutoCombo } from "open-sse/services/autoCombo.js";
+import { stripComboPrefix } from "open-sse/services/comboPrefix.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -251,19 +252,22 @@ export async function handleChat(request, clientRawRequest = null) {
   }
 
   if (comboModels) {
+    // /v1/models publishes combos as "combo/<name>"; per-combo settings, rotation
+    // state, logs and the access check all key on the bare name.
+    const comboName = stripComboPrefix(modelStr);
     // ACL: check if this combo is allowed for this API key (skip auto-combo or check if restricted)
-    if (!autoComboResult && !isComboAllowed(apiKeyInfo, modelStr)) {
-      log.warn("AUTH", `Combo "${modelStr}" not allowed for API key`);
-      return respond(errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${modelStr}" is not allowed for this API key`));
+    if (!autoComboResult && !isComboAllowed(apiKeyInfo, comboName)) {
+      log.warn("AUTH", `Combo "${comboName}" not allowed for API key`);
+      return respond(errorResponse(HTTP_STATUS.FORBIDDEN, `Combo "${comboName}" is not allowed for this API key`));
     }
     // Check for combo-specific strategy first, fallback to global
-    const comboSpecificStrategy = autoComboResult?.strategy || comboStrategies[modelStr]?.fallbackStrategy;
+    const comboSpecificStrategy = autoComboResult?.strategy || comboStrategies[comboName]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const augmentedModels = await filterAdapterModels(keyAccess, augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings), comboModels);
     const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
 
     if (comboStrategy === "fusion") {
-      log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
+      log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion)`);
       return respond(await handleFusionChat({
         body,
         models: comboModels,
@@ -276,15 +280,15 @@ export async function handleChat(request, clientRawRequest = null) {
           return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, apiKeyInfo);
         },
         log,
-        comboName: modelStr,
-        judgeModel: comboStrategies[modelStr]?.judgeModel,
-        tuning: comboStrategies[modelStr]?.fusionTuning,
+        comboName,
+        judgeModel: comboStrategies[comboName]?.judgeModel,
+        tuning: comboStrategies[comboName]?.fusionTuning,
       }));
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    const comboCfg = comboStrategies[modelStr] || {};
-    log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    const comboCfg = comboStrategies[comboName] || {};
+    log.info("CHAT", `Combo "${comboName}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return respond(await handleComboChat({
       body,
       models: augmentedModels,
@@ -293,12 +297,12 @@ export async function handleChat(request, clientRawRequest = null) {
         adapterAdded
       ),
       log,
-      comboName: modelStr,
+      comboName,
       comboStrategy,
       comboStickyLimit,
       signal: request?.signal ?? null,
-      timeoutMs: comboStrategies[modelStr]?.targetTimeoutMs ?? null,
-      queueDepth: comboStrategies[modelStr]?.queueDepth ?? null,
+      timeoutMs: comboStrategies[comboName]?.targetTimeoutMs ?? null,
+      queueDepth: comboStrategies[comboName]?.queueDepth ?? null,
       sessionId,
       tenantScope: apiKeyInfo?.id || apiKey,
       smartPolicy: comboCfg.smartPolicy || "smart",

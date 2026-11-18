@@ -14,6 +14,7 @@ import * as log from "../utils/logger.js";
 import { readBoundedJson } from "../utils/boundedBody.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { stripComboPrefix } from "open-sse/services/comboPrefix.js";
 import { getKeyAccessContext, enforceKeyAccessProvider } from "../services/keyAccess.js";
 
 /**
@@ -77,21 +78,23 @@ export async function handleSearch(request) {
   const keyAccessDenied = await enforceKeyAccessProvider(await getKeyAccessContext(request), providerInput, comboModels);
   if (keyAccessDenied) return keyAccessDenied;
   if (comboModels) {
+    // The catalog publishes "combo/<name>"; settings and rotation state key on the bare name.
+    const comboName = stripComboPrefix(providerInput);
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = comboStrategies[comboName]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("SEARCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("SEARCH", `Combo "${comboName}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
       handleSingleModel: (b, m, opts) => handleSingleProviderSearch(b, m, request, apiKey, settings, opts),
       log,
-      comboName: providerInput,
+      comboName,
       comboStrategy,
       comboStickyLimit,
       signal: request?.signal ?? null,
-      timeoutMs: comboStrategies[providerInput]?.targetTimeoutMs ?? null,
-      queueDepth: comboStrategies[providerInput]?.queueDepth ?? null,
+      timeoutMs: comboStrategies[comboName]?.targetTimeoutMs ?? null,
+      queueDepth: comboStrategies[comboName]?.queueDepth ?? null,
     });
   }
 

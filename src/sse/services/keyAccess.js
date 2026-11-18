@@ -26,6 +26,7 @@ import { getApiKeyByKey } from "@/lib/db/repos/apiKeysRepo.js";
 import { getCombos } from "@/lib/db/repos/combosRepo.js";
 import { getModelInfo, getComboModels } from "./model.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
+import { stripComboPrefix } from "open-sse/services/comboPrefix.js";
 import {
   KEY_ACCESS_COMBO_OWNER,
   KEY_ACCESS_PROVIDER_AS_MODEL_KINDS,
@@ -125,8 +126,9 @@ export async function enforceKeyAccess(ctx, requested) {
   if (typeof requested !== "string" || !requested) return keyAccessDeniedResponse(ctx, String(requested ?? ""));
   const sets = await getAllowSets(ctx);
   const comboModels = await getComboModels(requested);
+  // Allow-lists store the bare combo name, while /v1/models publishes "combo/<name>".
   const allowed = comboModels
-    ? sets.combos.has(lower(requested))
+    ? sets.combos.has(lower(stripComboPrefix(requested)))
     : await isModelStringAllowed(ctx, requested);
   return allowed ? null : keyAccessDeniedResponse(ctx, requested);
 }
@@ -154,7 +156,7 @@ export async function enforceKeyAccessProvider(ctx, requested, comboModels) {
   if (typeof requested !== "string" || !requested) return keyAccessDeniedResponse(ctx, String(requested ?? ""));
   const sets = await getAllowSets(ctx);
   const allowed = comboModels
-    ? sets.combos.has(lower(requested))
+    ? sets.combos.has(lower(stripComboPrefix(requested)))
     : sets.providers.has(lower(resolveProviderId(requested)));
   return allowed ? null : keyAccessDeniedResponse(ctx, requested);
 }

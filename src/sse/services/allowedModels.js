@@ -28,6 +28,7 @@ import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { comboModelId } from "open-sse/services/comboPrefix.js";
 import { fetchPublic } from "@/shared/utils/ssrfGuard.js";
 
 const UPSTREAM_CONNECTION_RE = /[-_][0-9a-f]{8,}$/i;
@@ -693,7 +694,7 @@ async function buildAllModelEntries(kindFilter, combos, customModels, modelAlias
 
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
-    const entry = { id: `combo/${combo.name}`, object: "model", owned_by: "combo" };
+    const entry = { id: comboModelId(combo.name), object: "model", owned_by: "combo" };
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
     } else {

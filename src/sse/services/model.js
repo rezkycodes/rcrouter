@@ -2,6 +2,7 @@
 import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { stripComboPrefix } from "open-sse/services/comboPrefix.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
 const LOCAL_PROVIDER_ALIASES = {
@@ -83,10 +84,12 @@ export async function getModelInfo(modelStr) {
  * @returns {Promise<string[]|null>} Array of models or null if not a combo
  */
 export async function getComboModels(modelStr) {
-  // Only check if it's not in provider/model format
-  if (modelStr.includes("/")) return null;
+  // /v1/models publishes combos as "combo/<name>" (comboModelId), so accept that id
+  // as well as the bare name. Any other provider/model string is not a combo.
+  const name = stripComboPrefix(modelStr);
+  if (name.includes("/")) return null;
 
-  const combo = await getComboByName(modelStr);
+  const combo = await getComboByName(name);
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

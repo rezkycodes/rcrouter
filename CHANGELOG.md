@@ -20,6 +20,7 @@ Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specif
 ## Fixes
 
 - **Omitted `stream` field**: a client that leaves `stream` out of an OpenAI Chat Completions, Anthropic Messages or OpenAI Responses request now gets a plain JSON reply, as those APIs define. Before, the router asked the upstream for SSE without telling it `stream: true`, so OpenAI-compatible upstreams answered JSON that was then served as `text/event-stream` (followed by `[DONE]`, with shortened tool names not restored). `Accept: text/event-stream` without `application/json` still selects SSE; an explicit `stream`, `forceStream` providers and the Gemini family are unchanged.
+- **Combo ids published by `/v1/models`**: `GET /v1/models` lists combos as `combo/<name>`, but chat requests with that exact id failed with `No active credentials for provider: combo` (the id was read as provider `combo` + model `<name>`); only the bare `<name>` worked. Every combo-aware endpoint (chat, `/v1/messages`, `/v1/responses`, images, TTS, web search, web fetch) now accepts both forms, and per-combo strategy settings, rotation state and the per-key combo allow-list all use the bare name. A `combo/<x>` that is not a combo is still routed as before. The prefix is defined once (`open-sse/services/comboPrefix.js`) and used by both the catalog and the resolver.
 
 ## Selective ports from VansRouter v0.91.87
 

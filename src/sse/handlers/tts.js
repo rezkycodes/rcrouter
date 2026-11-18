@@ -4,6 +4,7 @@ import {
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
+import { stripComboPrefix } from "open-sse/services/comboPrefix.js";
 import { getKeyAccessContext, enforceKeyAccess } from "../services/keyAccess.js";
 import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -52,21 +53,23 @@ export async function handleTts(request) {
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
+    // The catalog publishes "combo/<name>"; settings and rotation state key on the bare name.
+    const comboName = stripComboPrefix(modelStr);
     const comboStrategies = settings.comboStrategies || {};
-    const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
+    const comboStrategy = comboStrategies[comboName]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("TTS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("TTS", `Combo "${comboName}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
       models: comboModels,
       handleSingleModel: (b, m, opts) => handleSingleModelTts(b, m, responseFormat, language, style, opts),
       log,
-      comboName: modelStr,
+      comboName,
       comboStrategy,
       comboStickyLimit,
       signal: request?.signal ?? null,
-      timeoutMs: comboStrategies[modelStr]?.targetTimeoutMs ?? null,
-      queueDepth: comboStrategies[modelStr]?.queueDepth ?? null,
+      timeoutMs: comboStrategies[comboName]?.targetTimeoutMs ?? null,
+      queueDepth: comboStrategies[comboName]?.queueDepth ?? null,
     });
   }
 
