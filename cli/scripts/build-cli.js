@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { writeThirdPartyNotices } = require("./thirdPartyNotices");
+const { isolatedLayoutProblem, bundleProblem } = require("./bundleLayout");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
@@ -193,6 +194,12 @@ function assertDeepSeekPowFiles(cliAppDir) {
 function buildCliPackage() {
   console.log("📦 Building RcRouter CLI package with Next.js...\n");
 
+  const layoutProblem = isolatedLayoutProblem(appDir);
+  if (layoutProblem) {
+    console.error(`❌ ${layoutProblem}`);
+    process.exit(1);
+  }
+
   fs.mkdirSync(buildHomeDir, { recursive: true });
   fs.mkdirSync(path.join(buildHomeDir, "AppData", "Roaming"), { recursive: true });
   fs.mkdirSync(path.join(buildHomeDir, "AppData", "Local"), { recursive: true });
@@ -251,6 +258,11 @@ function buildCliPackage() {
     process.exit(1);
   }
   console.log("✅ Copied standalone build\n");
+  const copiedProblem = bundleProblem(cliAppDir);
+  if (copiedProblem) {
+    console.error(`❌ ${copiedProblem}`);
+    process.exit(1);
+  }
 
   // Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
   const customServerSrc = path.join(appDir, "custom-server.js");

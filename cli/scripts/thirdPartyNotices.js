@@ -66,7 +66,21 @@ function listProdLicenses(appDir) {
   } catch (error) {
     throw new Error(`"pnpm licenses list --prod --json" failed in ${appDir}: ${error.stderr || error.message}`);
   }
+  return parseLicenseReport(raw, appDir);
+}
+
+function parseLicenseReport(raw, appDir) {
   const byLicense = JSON.parse(raw);
+  // pnpm reports where each package lives in its default (isolated) layout,
+  // node_modules/.pnpm/<id>/node_modules/<name>. With the hoisted linker (what the published
+  // package is built with) those folders do not exist: the package sits at node_modules/<name>,
+  // or nested under its parent. Then the installed copies are searched by name and version.
+  let installed = null;
+  const dirOf = (name, version, reported) => {
+    if (reported && fs.existsSync(reported)) return reported;
+    if (!installed) installed = new Map(listShippedPackages(appDir).map((p) => [`${p.name}@${p.version}`, p.dir]));
+    return installed.get(`${name}@${version}`) || reported;
+  };
   const out = [];
   for (const [license, packages] of Object.entries(byLicense)) {
     for (const pkg of packages) {
@@ -77,7 +91,7 @@ function listProdLicenses(appDir) {
           license,
           author: pkg.author || "",
           source: pkg.homepage || "",
-          dir: pkg.paths[i],
+          dir: dirOf(pkg.name, version, pkg.paths[i]),
         });
       });
     }
@@ -258,6 +272,7 @@ module.exports = {
   OUTPUT_FILE_NAME,
   MIN_PACKAGES,
   listProdLicenses,
+  parseLicenseReport,
   listShippedPackages,
   readLicenseTexts,
   writeThirdPartyNotices,

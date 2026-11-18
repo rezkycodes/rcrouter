@@ -18,6 +18,7 @@ const {
   MIN_PACKAGES,
   OUTPUT_FILE_NAME,
   listShippedPackages,
+  parseLicenseReport,
   readLicenseTexts,
   writeThirdPartyNotices,
 } = require("../../cli/scripts/thirdPartyNotices.js");
@@ -223,3 +224,57 @@ describe("license file discovery", () => {
     assert.deepEqual(listShippedPackages(path.join(appDir, "nope")), []);
   });
 });
+
+describe("locating license files for `pnpm licenses` rows", () => {
+  const row = (name, versions, paths) => ({ name, versions, paths, license: "MIT", author: "", homepage: "" });
+  const report = (...rows) => JSON.stringify({ MIT: rows });
+
+  it("uses the reported folder when it exists (pnpm's default layout)", () => {
+    const appDir = createTempDir();
+    const reported = path.join(appDir, "node_modules/.pnpm/a@1.0.0/node_modules/a");
+    write(reported, "package.json", JSON.stringify({ name: "a", version: "1.0.0" }));
+    write(reported, "LICENSE", MIT("A"));
+
+    const [entry] = parseLicenseReport(report(row("a", ["1.0.0"], [reported])), appDir);
+
+    assert.equal(entry.dir, reported);
+  });
+
+  it("finds the package where the hoisted linker puts it when the reported folder does not exist", () => {
+    const appDir = createTempDir();
+    write(appDir, "node_modules/a/package.json", JSON.stringify({ name: "a", version: "1.0.0" }));
+    write(appDir, "node_modules/a/LICENSE", MIT("A Authors"));
+    const missing = path.join(appDir, "node_modules/.pnpm/a@1.0.0/node_modules/a");
+
+    const [entry] = parseLicenseReport(report(row("a", ["1.0.0"], [missing])), appDir);
+
+    assert.equal(entry.dir, path.join(appDir, "node_modules", "a"));
+    assert.match(readLicenseTexts(entry.dir), /A Authors/);
+  });
+
+  it("tells two installed versions of one package apart, including a nested copy", () => {
+    const appDir = createTempDir();
+    write(appDir, "node_modules/x/package.json", JSON.stringify({ name: "x", version: "2.0.0" }));
+    write(appDir, "node_modules/x/LICENSE", MIT("X two"));
+    write(appDir, "node_modules/parent/package.json", JSON.stringify({ name: "parent", version: "1.0.0" }));
+    write(appDir, "node_modules/parent/node_modules/x/package.json", JSON.stringify({ name: "x", version: "1.0.0" }));
+    write(appDir, "node_modules/parent/node_modules/x/LICENSE", MIT("X one"));
+    const gone = (v) => path.join(appDir, `node_modules/.pnpm/x@${v}/node_modules/x`);
+
+    const entries = parseLicenseReport(report(row("x", ["1.0.0", "2.0.0"], [gone("1.0.0"), gone("2.0.0")])), appDir);
+
+    assert.match(readLicenseTexts(entries.find((e) => e.version === "1.0.0").dir), /X one/);
+    assert.match(readLicenseTexts(entries.find((e) => e.version === "2.0.0").dir), /X two/);
+  });
+
+  it("keeps the reported folder for a package that is not installed anywhere", () => {
+    const appDir = createTempDir();
+    const missing = path.join(appDir, "node_modules/.pnpm/ghost@1.0.0/node_modules/ghost");
+
+    const [entry] = parseLicenseReport(report(row("ghost", ["1.0.0"], [missing])), appDir);
+
+    assert.equal(entry.dir, missing);
+    assert.equal(readLicenseTexts(entry.dir), "");
+  });
+});
+

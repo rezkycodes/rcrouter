@@ -37,7 +37,9 @@ npm run build && PORT=20128 HOSTNAME=0.0.0.0 npm run start           # productio
 
 CLI package (`cli/`):
 ```bash
+pnpm install --frozen-lockfile --config.node-linker=hoisted   # required before cli:pack (the build refuses pnpm's default layout)
 npm run cli:pack       # build + npm pack from root
+node cli/scripts/smokeStart.js <package.tgz>   # start the packed app on a spare port and request /login
 cd cli && npm run dev  # nodemon watch
 ```
 
