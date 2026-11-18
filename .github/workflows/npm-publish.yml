@@ -139,9 +139,11 @@ jobs:
         working-directory: cli
         run: npm run build
 
-      - name: Inspect the package contents
+      - name: Inspect the package and dry-run the publish
         id: pack
         working-directory: cli
+        env:
+          TAG_ARGS: ${{ steps.meta.outputs.tag_args }}
         run: |
           set -euo pipefail
           npm pack --dry-run --json --ignore-scripts > "$RUNNER_TEMP/pack.json"
@@ -160,6 +162,15 @@ jobs:
           if (missing.length) { console.error("Required files missing from the package: " + missing.join(", ")); process.exit(1); }
           EOF
 
+          # Nothing is sent to the registry here. npm silently "auto-corrects" an invalid
+          # package.json when publishing (e.g. it dropped bin "./cli.js", which would ship a
+          # package without the `rcrouter` command); treat any correction as a failure.
+          npm publish --access public --dry-run --ignore-scripts $TAG_ARGS 2>&1 | tee "$RUNNER_TEMP/publish-dry.log"
+          if grep -q "auto-corrected" "$RUNNER_TEMP/publish-dry.log"; then
+            echo "::error::npm would change cli/package.json on publish. Run 'npm pkg fix' in cli/ and commit the result."
+            exit 1
+          fi
+
       - name: Publish to npm
         if: steps.meta.outputs.publish == 'true'
         working-directory: cli
@@ -168,13 +179,6 @@ jobs:
           TAG_ARGS: ${{ steps.meta.outputs.tag_args }}
         # --ignore-scripts: the package was built in the step above (prepublishOnly would build again).
         run: npm publish --access public --provenance --ignore-scripts $TAG_ARGS
-
-      - name: Dry run (nothing is published)
-        if: steps.meta.outputs.publish != 'true'
-        working-directory: cli
-        env:
-          TAG_ARGS: ${{ steps.meta.outputs.tag_args }}
-        run: npm publish --access public --dry-run --ignore-scripts $TAG_ARGS
 
       - name: Summary
         if: always()

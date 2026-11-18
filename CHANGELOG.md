@@ -31,7 +31,7 @@ Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specif
 
 ## CI and packaging
 
-- **npm release pipeline** (`.github/workflows/npm-publish.yml`): pushing a `vX.Y.Z` tag runs the Quality gate, builds the CLI package (`cli/`, npm name `rcrouter`, app bundle included) and publishes it with provenance. The tag must equal the version in `package.json` and `cli/package.json`; prereleases go to the `next` dist-tag; an existing version is never overwritten. Manual runs default to a dry run. Needs the `NPM_TOKEN` repository secret (setup steps are in the workflow header). The installed CLI's built-in update check then offers new versions.
+- **npm release pipeline** (`.github/workflows/npm-publish.yml`): pushing a `vX.Y.Z` tag runs the Quality gate, builds the CLI package (`cli/`, npm name `rcrouter`, app bundle included) and publishes it with provenance. The tag must equal the version in `package.json` and `cli/package.json`; prereleases go to the `next` dist-tag; an existing version is never overwritten. Manual runs default to a dry run. Needs the `NPM_TOKEN` repository secret (setup steps are in the workflow header). The installed CLI's built-in update check then offers new versions. The CLI's `bin` is now `cli.js` (npm drops the `./cli.js` spelling on publish, which would have shipped a package without the `rcrouter` command), and the workflow fails if npm would correct `cli/package.json`.
 - **Docs on GitHub Pages**: the GitBook workflow now publishes to this repository's `gh-pages` branch with `GITHUB_TOKEN` instead of force-pushing to `9router/9router.github.io` with a deploy key; the docs root redirect honours the base path.
 
 ## Selective ports from VansRouter v0.91.87
