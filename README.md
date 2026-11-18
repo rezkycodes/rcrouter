@@ -6,8 +6,12 @@
   <p><i>Connect Claude Code, Cursor, Codex, OpenCode, Cline, and Copilot to AI providers with session-aware routing and granular multi-tenant access control.</i></p>
   
   <p>
-    <b>Forked from the official <a href="https://github.com/decolua/9router">decolua/9router</a> (v0.5.75 Core)</b><br/>
+    <b>A fork of <a href="https://github.com/decolua/9router">9router</a> by decolua and contributors (synced to upstream v0.5.119)</b><br/>
     Enhanced with enterprise-grade features from <b>VansRouter</b> and intelligent combo routing from <b>OmniRoute</b>.
+  </p>
+  <p>
+    <sub>RcRouter is an independent project, not an official 9router release, and is not endorsed by its authors.<br/>
+    It is used under the MIT License; the original copyright notice is kept in <a href="LICENSE">LICENSE</a>.</sub>
   </p>
 </div>
 
@@ -22,7 +26,7 @@ Standard AI routers often suffer from three major shortcomings when driving long
 
 **RcRouter solves all of this out-of-the-box:**
 - ✅ **Context-Relay (Cache-Aware Routing):** Reuses the same eligible upstream account across successful turns when a session ID is supplied, improving the chance of upstream prompt-cache hits.
-- ✅ **Upstream v0.5.75 Core:** Fully aligned with the latest official 9router core (1M context window auto-compact, 4-marker Claude cache budget caps, Kiro protocol updates).
+- ✅ **Upstream v0.5.119 Core:** Fully aligned with the latest official 9router core (1M context window auto-compact, 4-marker Claude cache budget caps, Kiro protocol updates).
 - ✅ **Granular Tri-State ACL:** Per-API-key restrictions across service kinds, providers, combos, and specific models (`null` = permit all, `[]` = deny all, array = whitelist).
 - ✅ **Bounded read caching:** 5-second settings and 2-second connection caches, with explicit invalidation on mutation, reduce repeated SQLite reads within a process.
 - ✅ **Account Capacity Guard:** Per-connection concurrency caps (default 3) with FIFO queueing and cancellation-safe slot release; configure `maxConcurrency` in a connection's provider-specific settings.

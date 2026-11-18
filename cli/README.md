@@ -4,6 +4,8 @@
 
 **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
 
+> RcRouter is a fork of **[9router](https://github.com/decolua/9router)** by decolua and contributors, used under the MIT License. It is an independent project, not an official 9router release, and is not endorsed by its authors. Report issues in [this repository](https://github.com/rezkycodes/rcrouter/issues), not upstream.
+
 [![npm](https://img.shields.io/npm/v/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
 [![Downloads](https://img.shields.io/npm/dm/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
 [![GHCR](https://img.shields.io/badge/GHCR-rezkycodes%2Frcrouter-blue?logo=github)](https://github.com/rezkycodes/rcrouter/pkgs/container/rcrouter)
