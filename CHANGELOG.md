@@ -1,4 +1,9 @@
-# Unreleased
+# v1.2.0 (2026-11-19)
+
+### Fixes
+- **The npm package could not start its server (1.1.1, 1.1.2 and 1.1.3).** `rcrouter` installed, but the server it launches died on boot with `Cannot find module '@swc/helpers/_/_interop_require_default'`. The bundled `node_modules` was copied out of pnpm's symlinked layout, which cut `next` off from the packages it requires. The same cut broke `open` (the browser step of OAuth logins: missing `wsl-utils`) and the AWS SDK credential providers (missing `@smithy/core`). If you installed one of those versions, upgrade: `npm install -g @rezkycodes/rcrouter@latest`.
+- The package is now built from a flat (hoisted) `node_modules`, like npm's own layout. The build refuses pnpm's default layout, and the publish workflow starts the packed tarball (spare port, throwaway data directory) and requests `/login` before anything is published. The package also got smaller (about 18 MB instead of 28 MB).
+- `THIRD-PARTY-NOTICES.txt` is generated from the new layout too and still carries the license texts (the generator looks for them where the hoisted linker puts packages).
 
 ### Install location
 - Everything RcRouter installs now lives under `~/.rcrouter` (`%APPDATA%\rcrouter` on Windows). Before, several parts still used 9router's `~/.9router`, which a separately installed 9router also uses: the SQLite runtime the CLI installs (`runtime/`), the MITM root CA, PID and alias files (`mitm/`), the in-app updater's status and install log (`update/`) and the password saved by `rcrouter connect --save` (`connect.env`).
