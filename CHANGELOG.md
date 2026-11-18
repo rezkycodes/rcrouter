@@ -1,4 +1,6 @@
-# Unreleased
+# v1.1.2 (2026-11-18)
+
+Patch release: licensing and packaging only, the gateway itself is unchanged.
 
 ### Licensing and packaging
 - The npm package now ships `THIRD-PARTY-NOTICES.txt`: every third-party component bundled in or compiled into the package, with its declared license and license text (identical texts are stored once). Next.js standalone tracing strips the LICENSE files of bundled packages, so before this the tarball carried none of them. The file is generated at build time (`cli/scripts/thirdPartyNotices.js`, from `pnpm licenses list --prod` plus the packages found in `cli/app`), and the release workflow fails if it is missing. Components the package ships no license text for are listed with their declared license and source instead of a guessed text.
