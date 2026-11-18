@@ -1,3 +1,10 @@
+# v1.1.3 (2026-11-19)
+
+Patch release: documentation only, the gateway itself is unchanged.
+
+### Documentation
+- Both READMEs now say up front that RcRouter is a fork of 9router (decolua and contributors, MIT), an independent project that is not an official 9router release and is not endorsed by its authors. The npm README had the credit only under Acknowledgments; the repository README still named upstream v0.5.75, it now says v0.5.119 (the version the last sync brought in).
+
 # v1.1.2 (2026-11-18)
 
 Patch release: licensing and packaging only, the gateway itself is unchanged.
