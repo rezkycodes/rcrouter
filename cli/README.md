@@ -106,7 +106,7 @@ rcrouter connect --reset --tools claude,codex                     # undo
 
 Without a global install, run `npx @rezkycodes/rcrouter connect …` instead of `rcrouter connect …`.
 
-For compatibility with existing setups the identifiers written to tool configs keep the `9router` name (provider id, `*.bak-9router` backups, `NINE_ROUTER_PASSWORD`, `~/.9router/connect.env`).
+For compatibility with existing setups the identifiers written to tool configs keep the `9router` name (provider id, `*.bak-9router` backups, `NINE_ROUTER_PASSWORD`).
 
 It logs in with the dashboard password (hidden prompt), reuses or creates an API key named `cli-<hostname>`, and writes each tool's config (backing up the original once as `*.bak-9router`).
 
@@ -176,7 +176,7 @@ Tools not pointed at RcRouter are listed as `not configured`. For Codex, OpenCod
 | Option | Purpose |
 |---|---|
 | `--password <pw>` | Dashboard password (or `NINE_ROUTER_PASSWORD`); prompted if omitted — preferred, keeps it out of shell history |
-| `--save` | After a successful login, save the password for this server to `~/.9router/connect.env` (plain text, mode 600) so later runs skip the prompt. Delete the file to forget it |
+| `--save` | After a successful login, save the password for this server to `~/.rcrouter/connect.env` (plain text, mode 600) so later runs skip the prompt. Delete the file to forget it |
 | `--api-key <key>` | Use this key and skip login. The server's models can't be read without a login, so pass model flags |
 | `--key-name <name>` | API key name to reuse/create (default `cli-<hostname>`) |
 | `--print-env` | Also print `OPENAI_BASE_URL` / `OPENAI_API_KEY` for other CLIs |
@@ -202,7 +202,7 @@ Any tool supporting OpenAI/Claude-compatible API works.
 - **Windows**: `%APPDATA%/rcrouter/db/data.sqlite`
 - **Docker**: `/app/data/db/data.sqlite` (mount `$HOME/.rcrouter` to persist)
 
-On first start, an existing `~/.9router` database (from 9router) is copied to the new location; the original is left untouched.
+On first start, an existing `~/.9router` database (from 9router) is copied to the new location; the original is left untouched. Everything RcRouter installs for itself also lives under `~/.rcrouter`, including the SQLite runtime (`~/.rcrouter/runtime`), MITM certificates (`~/.rcrouter/mitm`) and update logs (`~/.rcrouter/update`), so a separately installed 9router keeps its own `~/.9router`.
 
 ---
 

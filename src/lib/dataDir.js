@@ -27,7 +27,11 @@ function defaultDir() {
     if (fs.existsSync(legacyDb)) {
       try {
         fs.mkdirSync(target, { recursive: true });
-        fs.cpSync(legacy, target, { recursive: true, errorOnExist: false, force: true });
+        fs.cpSync(legacy, target, {
+          recursive: true, errorOnExist: false, force: true,
+          // runtime/ holds native modules built for the old install; this one builds its own.
+          filter: (src) => path.relative(legacy, src).split(path.sep)[0] !== "runtime",
+        });
         console.log(`[DATA_DIR] Migrated existing 9router data from '${legacy}' to '${target}'`);
       } catch (err) {
         console.warn(`[DATA_DIR] Failed to copy data from '${legacy}' to '${target}':`, err?.message || err);

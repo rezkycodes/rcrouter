@@ -77,7 +77,7 @@ const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRunt
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const args = process.argv.slice(2);
 
-// Subcommands (`9router xai video …`) run against an already-running gateway
+// Subcommands (`rcrouter xai video …`) run against an already-running gateway
 // and bypass the launcher flow (no runtime self-heal, no server spawn).
 if (args[0] === "xai" && args[1] === "video") {
   const { run } = require("./src/cli/commands/xaiVideo");
@@ -90,9 +90,9 @@ if (args[0] === "xai" && args[1] === "video") {
   return;
 }
 
-// `9router connect <url>` configures local CLI tools against a remote server, and
-// `9router show` prints what they're currently set to — no local server, no
-// runtime deps. Usable via `npx 9router …`.
+// `rcrouter connect <url>` configures local CLI tools against a remote server, and
+// `rcrouter show` prints what they're currently set to — no local server, no
+// runtime deps. Usable via `npx @rezkycodes/rcrouter …`.
 if (args[0] === "connect" || args[0] === "show") {
   const { run } = require(args[0] === "show" ? "./src/cli/commands/show" : "./src/cli/commands/connect");
   run(args.slice(1))
@@ -104,7 +104,7 @@ if (args[0] === "connect" || args[0] === "show") {
   return;
 }
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
+// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.rcrouter/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
 // better-sqlite3 is optional. Logs to stderr only on failure.
 try { ensureSqliteRuntime({ silent: true }); } catch {}
@@ -184,10 +184,10 @@ Options:
   -v, --version       Show version
 
 Commands:
-  connect <server-url> Configure Claude Code for a remote 9router server
-                      (npx 9router connect http://host:20128 — no install needed)
-  show [tool…]        Show each CLI tool's current 9router config and models
-                      (e.g. 9router show claude)
+  connect <server-url> Configure Claude Code for a remote RcRouter server
+                      (npx @rezkycodes/rcrouter connect http://host:20128 — no install needed)
+  show [tool…]        Show each CLI tool's current RcRouter config and models
+                      (e.g. ${BIN_NAME} show claude)
   xai video --prompt "..." --output video.mp4
                       Generate a Grok Imagine video via the running gateway
                       (see: ${BIN_NAME} xai video --help)
@@ -232,7 +232,11 @@ function getAppDataDir() {
     if (fs.existsSync(path.join(legacy, "db", "data.sqlite"))) {
       try {
         fs.mkdirSync(target, { recursive: true });
-        fs.cpSync(legacy, target, { recursive: true, errorOnExist: false, force: true });
+        fs.cpSync(legacy, target, {
+          recursive: true, errorOnExist: false, force: true,
+          // runtime/ holds native modules built for the old install; this one builds its own.
+          filter: (src) => path.relative(legacy, src).split(path.sep)[0] !== "runtime",
+        });
       } catch {}
     }
   }
@@ -928,7 +932,7 @@ function startServer(updatePromise) {
     if (restartCount >= MAX_RESTARTS) {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
       try {
-        const dbPath = path.join(os.homedir(), process.platform === "win32" ? path.join("AppData", "Roaming", "9router", "db.json") : path.join(".9router", "db.json"));
+        const dbPath = path.join(getAppDataDir(), "db.json");
         if (fs.existsSync(dbPath)) {
           const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
           if (db.settings) db.settings.mitmEnabled = false;

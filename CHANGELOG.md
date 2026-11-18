@@ -1,3 +1,18 @@
+# Unreleased
+
+### Install location
+- Everything RcRouter installs now lives under `~/.rcrouter` (`%APPDATA%\rcrouter` on Windows). Before, several parts still used 9router's `~/.9router`, which a separately installed 9router also uses: the SQLite runtime the CLI installs (`runtime/`), the MITM root CA, PID and alias files (`mitm/`), the in-app updater's status and install log (`update/`) and the password saved by `rcrouter connect --save` (`connect.env`).
+- Upgrading: the first start installs the SQLite runtime into `~/.rcrouter/runtime` (needs network once). The MITM directory is copied once from `~/.9router/mitm` so an already-trusted root CA keeps working; stale PID/lock files are not copied. A password saved under `~/.9router/connect.env` is not carried over: run `rcrouter connect --save` again.
+- The one-time copy of a `~/.9router` data directory no longer copies its `runtime/` (native modules built for the old install).
+- The standalone update script defaulted to upstream's package name `9router` whenever `UPDATER_PKG_NAME` was not set; it now defaults to `@rezkycodes/rcrouter`. Before an update the app finds the processes to stop by the name `rcrouter` instead of `9router`.
+
+### Dashboard
+- Removed the 9Remote and 9English links from the sidebar, and the unused 9Remote promo components.
+- The favicon, the `favicon.ico` and the installable-app icons are a black "R" on white (they were a "9").
+- The Change Log window now reads the `CHANGELOG.md` that ships with the running build (new `/api/changelog`) instead of upstream's hosted file, so it always lists this project's changes for the installed version.
+- Product name is RcRouter in visible text: tool setup notes, the Hermes and Skills screens, login hint, landing-page links (repository, npm, license), backup and SAML-metadata file names, and the CLI help, tray, autostart entry and terminal UI. Identifiers that existing setups rely on keep the `9router` name: tool config keys and provider ids, `sk_9router`, `has9Router` flags, `urn:9router:sp`, `*.bak-9router`, `NINE_ROUTER_*` variables, the MITM root CA name and the third-party "9Router for GitHub Copilot" extension.
+- The Skills page links to this repository's `skills/` folder.
+
 # v1.1.3 (2026-11-19)
 
 Patch release: documentation only, the gateway itself is unchanged.
