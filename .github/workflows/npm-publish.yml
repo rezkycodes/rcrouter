@@ -1,12 +1,14 @@
 name: Publish to npm
 
-# Publishes the CLI package (cli/, npm name "rcrouter") when a version tag is pushed.
+# Publishes the CLI package (cli/, npm name "@rezkycodes/rcrouter") when a version tag is pushed.
 # Same trigger and quality gate as docker-publish.yml. A branch push never publishes.
+# The name is scoped because npm rejects the unscoped "rcrouter" as too similar to the
+# existing package "rc-router" (E403). The command users type is still `rcrouter` (the bin).
 #
 # One-time setup (the token is never typed into chat or committed):
 #   1. npmjs.com -> Access Tokens -> Generate New Token -> Granular, permission
-#      "Read and write", bypass 2FA enabled (required for CI), packages: rcrouter
-#      (the first publish creates the package, so choose "All packages" until it exists).
+#      "Read and write", tick "Bypass two-factor authentication" (it is OFF by default; without
+#      it npm answers EOTP and the publish fails), packages: "All packages" until the package exists.
 #   2. gh secret set NPM_TOKEN --repo rezkycodes/rcrouter     (paste the token at the prompt)
 #
 # Release flow:

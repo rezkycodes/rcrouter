@@ -113,7 +113,8 @@ try { ensureSqliteRuntime({ silent: true }); } catch {}
 try { ensureTrayRuntime({ silent: true }); } catch {}
 
 // Configuration constants
-const APP_NAME = pkg.name; // Use from package.json
+const APP_NAME = pkg.name; // npm package name ("@rezkycodes/rcrouter"): install command and registry lookups
+const BIN_NAME = Object.keys(pkg.bin || {})[0] || "rcrouter"; // command the user types ("rcrouter")
 const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
@@ -170,7 +171,7 @@ for (let i = 0; i < args.length; i++) {
     process.env.TRAY_MODE = "1";
   } else if (args[i] === "--help" || args[i] === "-h") {
     console.log(`
-Usage: ${APP_NAME} [options]
+Usage: ${BIN_NAME} [options]
 
 Options:
   -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
@@ -189,7 +190,7 @@ Commands:
                       (e.g. 9router show claude)
   xai video --prompt "..." --output video.mp4
                       Generate a Grok Imagine video via the running gateway
-                      (see: ${APP_NAME} xai video --help)
+                      (see: ${BIN_NAME} xai video --help)
 `);
     process.exit(0);
   } else if (args[i] === "--version" || args[i] === "-v") {
@@ -602,7 +603,7 @@ async function stopPreviousInstance(appPort) {
 }
 
 // Show progress immediately; run update check in parallel (not on the critical path).
-const startupSpinner = createSpinner(`Starting ${APP_NAME} v${pkg.version}...`).start();
+const startupSpinner = createSpinner(`Starting ${BIN_NAME} v${pkg.version}...`).start();
 const updatePromise = checkForUpdate();
 stopPreviousInstance(port).then(() => {
   startupSpinner.stop();
@@ -786,7 +787,7 @@ function startServer(updatePromise) {
     process.removeAllListeners("SIGHUP");
     process.on("SIGHUP", () => {});
 
-    console.log(`\n🚀 ${pkg.name} v${pkg.version}`);
+    console.log(`\n🚀 ${BIN_NAME} v${pkg.version}`);
     console.log(`Server: http://${displayHost}:${port}`);
 
     bootSpinner.start();

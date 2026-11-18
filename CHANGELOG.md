@@ -1,3 +1,15 @@
+# v1.1.1 (2026-11-18)
+
+Patch release: the npm package is renamed, nothing else in the gateway changes.
+
+### Upgrade notes
+- The CLI is published as **`@rezkycodes/rcrouter`** (npm rejected the unscoped `rcrouter` as too similar to the existing `rc-router`). Install with `npm i -g @rezkycodes/rcrouter`; the command you run is still `rcrouter`.
+- v1.1.0 was tagged and built as a Docker image but never published to npm; v1.1.1 is the first npm release.
+
+### Fixes
+- The dashboard update banner (`/api/version`) now checks the RcRouter package on npm. It was comparing against upstream's `9router`, so it could never report an RcRouter update.
+- The CLI help and start-up lines print the command name (`rcrouter`) instead of the scoped package name; the update check and the suggested install command use the package name.
+
 # v1.1.0 (2026-11-18)
 
 Minor release: new providers and features since v1.0.1, plus fixes.

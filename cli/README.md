@@ -4,8 +4,8 @@
 
 **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
 
-[![npm](https://img.shields.io/npm/v/rcrouter.svg)](https://www.npmjs.com/package/rcrouter)
-[![Downloads](https://img.shields.io/npm/dm/rcrouter.svg)](https://www.npmjs.com/package/rcrouter)
+[![npm](https://img.shields.io/npm/v/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
+[![Downloads](https://img.shields.io/npm/dm/@rezkycodes/rcrouter.svg)](https://www.npmjs.com/package/@rezkycodes/rcrouter)
 [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
 [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
 [![License](https://img.shields.io/npm/l/rcrouter.svg)](https://github.com/rezkycodes/rcrouter/blob/main/LICENSE)
@@ -41,10 +41,10 @@
 
 ```bash
 # npm
-npm install -g rcrouter
+npm install -g @rezkycodes/rcrouter
 
 # pnpm
-pnpm i -g rcrouter
+pnpm i -g @rezkycodes/rcrouter
 
 rcrouter
 

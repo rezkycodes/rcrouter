@@ -14,9 +14,9 @@ export const GITHUB_CONFIG = {
 
 // Updater configuration
 export const UPDATER_CONFIG = {
-  npmPackageName: "rcrouter",
-  installCmd: "npm i -g rcrouter",
-  installCmdLatest: "npm i -g rcrouter@latest --prefer-online",
+  npmPackageName: "@rezkycodes/rcrouter",
+  installCmd: "npm i -g @rezkycodes/rcrouter",
+  installCmdLatest: "npm i -g @rezkycodes/rcrouter@latest --prefer-online",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,

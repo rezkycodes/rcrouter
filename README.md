@@ -137,10 +137,10 @@ Reduce upstream token usage without modifying client code:
 
 ```bash
 # npm
-npm install -g rcrouter
+npm install -g @rezkycodes/rcrouter
 
 # pnpm
-pnpm i -g rcrouter
+pnpm i -g @rezkycodes/rcrouter
 
 rcrouter
 ```
