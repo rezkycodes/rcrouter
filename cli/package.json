@@ -11,7 +11,8 @@
     "hooks",
     "app",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.txt"
   ],
   "repository": {
     "type": "git",

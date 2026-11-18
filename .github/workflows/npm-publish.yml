@@ -157,7 +157,7 @@ jobs:
           const files = pack.files.map((f) => f.path);
           // Build-machine state and real secrets must never ship (.env.example is fine).
           const forbidden = files.filter((p) => /(^|\/)(\.fakehome|\.build-home)(\/|$)|(^|\/)\.env(\.(local|production|development|[^/]*\.local))?$|\.sqlite(-wal|-shm)?$|\.next-cli-build\/cache\//.test(p));
-          const required = ["cli.js", "app/server.js", "app/custom-server.js", "package.json"];
+          const required = ["cli.js", "app/server.js", "app/custom-server.js", "package.json", "LICENSE", "THIRD-PARTY-NOTICES.txt"];
           const missing = required.filter((p) => !files.includes(p));
           console.log(`${pack.name}@${pack.version}: ${files.length} files, unpacked ${(pack.unpackedSize / 1048576).toFixed(1)} MiB, tarball ${(pack.size / 1048576).toFixed(1)} MiB`);
           if (forbidden.length) { console.error("Forbidden files in the package:\n" + forbidden.slice(0, 20).join("\n")); process.exit(1); }

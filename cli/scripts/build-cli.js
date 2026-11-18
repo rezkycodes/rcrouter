@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { writeThirdPartyNotices } = require("./thirdPartyNotices");
 
 const cliDir = path.resolve(__dirname, "..");
 const appDir = path.resolve(cliDir, "..");
@@ -376,6 +377,21 @@ function buildCliPackage() {
     console.log("✅ MITM server build completed\n");
   } catch (error) {
     console.error("❌ MITM build failed");
+    process.exit(1);
+  }
+
+  // Step 9: third-party license notices. Standalone tracing strips the LICENSE files of the
+  // bundled packages, and some libraries are compiled into the chunks, so the notices are
+  // generated here and shipped as THIRD-PARTY-NOTICES.txt (listed in package.json "files").
+  console.log("9️⃣  Writing THIRD-PARTY-NOTICES.txt...");
+  try {
+    const notices = writeThirdPartyNotices({ appDir, cliDir, cliAppDir, isExcluded: shouldExclude });
+    console.log(
+      `✅ ${notices.components} components, ${notices.texts} license texts` +
+      (notices.withoutText ? `, ${notices.withoutText} without a shipped text (declared license listed)` : "") + "\n",
+    );
+  } catch (error) {
+    console.error("❌ Could not write THIRD-PARTY-NOTICES.txt:", error.message);
     process.exit(1);
   }
 

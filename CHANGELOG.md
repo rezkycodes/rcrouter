@@ -1,3 +1,10 @@
+# Unreleased
+
+### Licensing and packaging
+- The npm package now ships `THIRD-PARTY-NOTICES.txt`: every third-party component bundled in or compiled into the package, with its declared license and license text (identical texts are stored once). Next.js standalone tracing strips the LICENSE files of bundled packages, so before this the tarball carried none of them. The file is generated at build time (`cli/scripts/thirdPartyNotices.js`, from `pnpm licenses list --prod` plus the packages found in `cli/app`), and the release workflow fails if it is missing. Components the package ships no license text for are listed with their declared license and source instead of a guessed text.
+- `package.json` and `open-sse/package.json` declare `"license": "MIT"`.
+- The npm README no longer points at upstream's Docker Hub/GHCR images, badges or `npx 9router` commands; it documents this project's public image `ghcr.io/rezkycodes/rcrouter`, the `rcrouter connect|show` commands, `npx @rezkycodes/rcrouter` and the real data location (`~/.rcrouter`). It credits 9router (decolua and contributors, MIT).
+
 # v1.1.1 (2026-11-18)
 
 Patch release: the npm package is renamed, nothing else in the gateway changes.

@@ -1,3 +1,4 @@
 app/*
+THIRD-PARTY-NOTICES.txt
 node_modules/*
 .tray-build/
