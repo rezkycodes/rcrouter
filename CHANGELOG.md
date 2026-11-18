@@ -1,4 +1,11 @@
-# Unreleased
+# v1.1.0 (2026-11-18)
+
+Minor release: new providers and features since v1.0.1, plus fixes.
+
+### Upgrade notes
+- The database upgrades itself to schema 3 on first start (additive; a backup is written to `db/backups/` first).
+- A request that omits `stream` now gets a plain JSON reply, as the OpenAI/Anthropic APIs define. Send `stream: true` (or `Accept: text/event-stream`) to stream.
+- Request bodies over 64 MiB (JSON) or 128 MiB (uploads) are answered with 413 before parsing.
 
 ## Upstream sync: 9router v0.5.75 → v0.5.119
 
@@ -21,6 +28,11 @@ Three-way merge of decolua/9router (base v0.5.75) into RcRouter; RcRouter-specif
 
 - **Omitted `stream` field**: a client that leaves `stream` out of an OpenAI Chat Completions, Anthropic Messages or OpenAI Responses request now gets a plain JSON reply, as those APIs define. Before, the router asked the upstream for SSE without telling it `stream: true`, so OpenAI-compatible upstreams answered JSON that was then served as `text/event-stream` (followed by `[DONE]`, with shortened tool names not restored). `Accept: text/event-stream` without `application/json` still selects SSE; an explicit `stream`, `forceStream` providers and the Gemini family are unchanged.
 - **Combo ids published by `/v1/models`**: `GET /v1/models` lists combos as `combo/<name>`, but chat requests with that exact id failed with `No active credentials for provider: combo` (the id was read as provider `combo` + model `<name>`); only the bare `<name>` worked. Every combo-aware endpoint (chat, `/v1/messages`, `/v1/responses`, images, TTS, web search, web fetch) now accepts both forms, and per-combo strategy settings, rotation state and the per-key combo allow-list all use the bare name. A `combo/<x>` that is not a combo is still routed as before. The prefix is defined once (`open-sse/services/comboPrefix.js`) and used by both the catalog and the resolver.
+
+## CI and packaging
+
+- **npm release pipeline** (`.github/workflows/npm-publish.yml`): pushing a `vX.Y.Z` tag runs the Quality gate, builds the CLI package (`cli/`, npm name `rcrouter`, app bundle included) and publishes it with provenance. The tag must equal the version in `package.json` and `cli/package.json`; prereleases go to the `next` dist-tag; an existing version is never overwritten. Manual runs default to a dry run. Needs the `NPM_TOKEN` repository secret (setup steps are in the workflow header). The installed CLI's built-in update check then offers new versions.
+- **Docs on GitHub Pages**: the GitBook workflow now publishes to this repository's `gh-pages` branch with `GITHUB_TOKEN` instead of force-pushing to `9router/9router.github.io` with a deploy key; the docs root redirect honours the base path.
 
 ## Selective ports from VansRouter v0.91.87
 

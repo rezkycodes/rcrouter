@@ -1,6 +1,6 @@
 {
   "name": "rcrouter",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "RcRouter CLI - Local AI model proxy gateway",
   "bin": {
     "rcrouter": "./cli.js"
@@ -15,7 +15,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/rezkycodes/rcrouter.git",
+    "url": "git+https://github.com/rezkycodes/rcrouter.git",
     "directory": "cli"
   },
   "homepage": "https://github.com/rezkycodes/rcrouter#readme",

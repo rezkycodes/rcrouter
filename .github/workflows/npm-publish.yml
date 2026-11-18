@@ -1,0 +1,193 @@
+name: Publish to npm
+
+# Publishes the CLI package (cli/, npm name "rcrouter") when a version tag is pushed.
+# Same trigger and quality gate as docker-publish.yml. A branch push never publishes.
+#
+# One-time setup (the token is never typed into chat or committed):
+#   1. npmjs.com -> Access Tokens -> Generate New Token -> Granular, permission
+#      "Read and write", bypass 2FA enabled (required for CI), packages: rcrouter
+#      (the first publish creates the package, so choose "All packages" until it exists).
+#   2. gh secret set NPM_TOKEN --repo rezkycodes/rcrouter     (paste the token at the prompt)
+#
+# Release flow:
+#   1. Bump "version" in package.json AND cli/package.json to the same value.
+#   2. Move the CHANGELOG "Unreleased" notes under "# vX.Y.Z (date)".
+#   3. Commit, then: git tag vX.Y.Z && git push origin vX.Y.Z
+#   4. Quality gate -> build -> publish. docker-publish.yml runs on the same tag.
+#
+# Manual run (Actions -> Publish to npm -> Run workflow) defaults to a dry run:
+# it builds the package and runs `npm publish --dry-run`, publishing nothing. A real
+# publish from a manual run needs a tag selected as the ref and dry_run unticked.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and run 'npm publish --dry-run' only (nothing is published)"
+        type: boolean
+        default: true
+      run_quality:
+        description: "Run the Quality workflow first (always runs for tag pushes)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    if: ${{ github.event_name == 'push' || inputs.run_quality }}
+    uses: ./.github/workflows/quality.yml
+
+  publish:
+    needs: quality
+    # Run when Quality passed, or was skipped (manual dry run); never when it failed.
+    if: ${{ !cancelled() && (needs.quality.result == 'success' || needs.quality.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance (signed build attestation)
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      REF_TYPE: ${{ github.ref_type }}
+      REF_NAME: ${{ github.ref_name }}
+      INPUT_DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Decide mode and check the version
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./cli/package.json').version")
+          APP_VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./cli/package.json').name")
+
+          # Real publish only from a pushed tag, or a manual run on a tag with dry_run off.
+          PUBLISH=false
+          if [ "$EVENT_NAME" = "push" ]; then PUBLISH=true; fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_TYPE" = "tag" ] && [ "$INPUT_DRY_RUN" != "true" ]; then PUBLISH=true; fi
+
+          if [ "$VERSION" != "$APP_VERSION" ]; then
+            echo "::error::cli/package.json ($VERSION) and package.json ($APP_VERSION) must have the same version"
+            exit 1
+          fi
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $REF_NAME does not match package version v$VERSION. Bump both package.json files, commit, then tag again."
+            exit 1
+          fi
+
+          # Prereleases (1.2.0-beta.1) must not become "latest".
+          TAG_ARGS="--tag latest"
+          case "$VERSION" in *-*) TAG_ARGS="--tag next" ;; esac
+
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "tag_args=$TAG_ARGS" >> "$GITHUB_OUTPUT"
+          echo "Package $NAME@$VERSION, publish=$PUBLISH ($TAG_ARGS)"
+
+      - name: Refuse to overwrite an existing version
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm. Bump the version; published versions cannot be replaced."
+            exit 1
+          fi
+
+      - name: Check the npm token is configured
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::Repository secret NPM_TOKEN is not set. Run: gh secret set NPM_TOKEN --repo ${{ github.repository }}"
+            exit 1
+          fi
+
+      - name: Install app dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install CLI dependencies
+        working-directory: cli
+        # --ignore-scripts: hooks/postinstall.js installs the SQLite runtime into the
+        # user's home for consumers; it must not run on the build machine.
+        run: pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
+
+      - name: Build the CLI package (app bundle included)
+        working-directory: cli
+        run: npm run build
+
+      - name: Inspect the package contents
+        id: pack
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json --ignore-scripts > "$RUNNER_TEMP/pack.json"
+          node - <<'EOF'
+          const fs = require("fs");
+          // npm 11 prints an array, npm 12 an object keyed by package name.
+          const raw = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/pack.json", "utf8"));
+          const pack = Array.isArray(raw) ? raw[0] : Object.values(raw)[0];
+          const files = pack.files.map((f) => f.path);
+          // Build-machine state and real secrets must never ship (.env.example is fine).
+          const forbidden = files.filter((p) => /(^|\/)(\.fakehome|\.build-home)(\/|$)|(^|\/)\.env(\.(local|production|development|[^/]*\.local))?$|\.sqlite(-wal|-shm)?$|\.next-cli-build\/cache\//.test(p));
+          const required = ["cli.js", "app/server.js", "app/custom-server.js", "package.json"];
+          const missing = required.filter((p) => !files.includes(p));
+          console.log(`${pack.name}@${pack.version}: ${files.length} files, unpacked ${(pack.unpackedSize / 1048576).toFixed(1)} MiB, tarball ${(pack.size / 1048576).toFixed(1)} MiB`);
+          if (forbidden.length) { console.error("Forbidden files in the package:\n" + forbidden.slice(0, 20).join("\n")); process.exit(1); }
+          if (missing.length) { console.error("Required files missing from the package: " + missing.join(", ")); process.exit(1); }
+          EOF
+
+      - name: Publish to npm
+        if: steps.meta.outputs.publish == 'true'
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG_ARGS: ${{ steps.meta.outputs.tag_args }}
+        # --ignore-scripts: the package was built in the step above (prepublishOnly would build again).
+        run: npm publish --access public --provenance --ignore-scripts $TAG_ARGS
+
+      - name: Dry run (nothing is published)
+        if: steps.meta.outputs.publish != 'true'
+        working-directory: cli
+        env:
+          TAG_ARGS: ${{ steps.meta.outputs.tag_args }}
+        run: npm publish --access public --dry-run --ignore-scripts $TAG_ARGS
+
+      - name: Summary
+        if: always()
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PUBLISH: ${{ steps.meta.outputs.publish }}
+        run: |
+          {
+            echo "### npm: $NAME@$VERSION"
+            if [ "$PUBLISH" = "true" ]; then
+              echo "Published. On a laptop: \`npm install -g $NAME@latest\` (or \`npm update -g $NAME\`), then \`$NAME --version\`."
+            else
+              echo "Dry run only, nothing was published."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
