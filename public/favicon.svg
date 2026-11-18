@@ -1,11 +1,4 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="6" fill="url(#gradient)"/>
-  <text x="16" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="white" text-anchor="middle">9</text>
-  <defs>
-    <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f97815"/>
-      <stop offset="1" stop-color="#c2590a"/>
-    </linearGradient>
-  </defs>
+  <rect width="32" height="32" rx="6" fill="#ffffff"/>
+  <path d="M10 25.5V8h6.2a5 5 0 0 1 0 10H10M16 18l6 7.5" stroke="#000000" stroke-width="3.4" stroke-linejoin="miter" fill="none"/>
 </svg>
-

@@ -9,7 +9,9 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
+  // Served by /api/changelog from the CHANGELOG.md that ships with the running build, so the
+  // dashboard lists the history of the code that is installed (not a hosted copy of upstream's).
+  changelogUrl: "/api/changelog",
 };
 
 // Updater configuration
