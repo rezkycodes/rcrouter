@@ -1,3 +1,10 @@
+# Unreleased
+
+### Fixes
+- The launcher no longer stops processes that are not its own. When the port was busy it killed every `next-server` process on the machine (which is also what a separately installed 9router runs, along with any other Next.js app) and whatever listened on the port. Now it stops only the previous RcRouter instance it recorded itself; if something else holds the port it prints what (name and pid) and exits, and you free the port or pass `--port`. The in-app "update" exit no longer kills other processes either.
+- `rcrouter --version` and `rcrouter --help` change nothing on disk. They used to install the SQLite and tray runtime packages into `~/.rcrouter/runtime` first; the runtime is now prepared right before the server starts, and not at all when the launch stops on a busy port.
+- A tunnel (cloudflared) aimed at the app port is only cleaned up when that port is free, so a tunnel that belongs to another server on the port is left alone.
+
 # v1.2.0 (2026-11-19)
 
 ### Fixes

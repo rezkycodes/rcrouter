@@ -72,6 +72,7 @@ const {
   isPortInUse,
   waitForPortFree,
   waitForPidsExit,
+  findPortHolder,
 } = require("./src/cli/utils/launcherProcess");
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
@@ -104,13 +105,16 @@ if (args[0] === "connect" || args[0] === "show") {
   return;
 }
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.rcrouter/runtime
-// so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
-// better-sqlite3 is optional. Logs to stderr only on failure.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
-
-// Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
-try { ensureTrayRuntime({ silent: true }); } catch {}
+// Self-heal the runtime deps the server needs, right before it starts (see below). Not at load:
+// `--version` and `--help` must not install anything, and a launch that stops on a busy port
+// must not either.
+function healRuntimes() {
+  // SQLite runtime (sql.js + better-sqlite3) into ~/.rcrouter/runtime so the server can resolve
+  // them via NODE_PATH. Best-effort — sql.js is required, better-sqlite3 is optional.
+  try { ensureSqliteRuntime({ silent: true }); } catch {}
+  // Tray runtime (systray for macOS/Linux only; Windows skipped).
+  try { ensureTrayRuntime({ silent: true }); } catch {}
+}
 
 // Configuration constants
 const APP_NAME = pkg.name; // npm package name ("@rezkycodes/rcrouter"): install command and registry lookups
@@ -135,16 +139,8 @@ function getDisplayHost() {
   return host === DEFAULT_HOST ? "localhost" : host;
 }
 const MAX_PORT_ATTEMPTS = 10;
-// Upper bounds for waiting on killed processes / a released port. Both waits
-// return as soon as the condition holds, so the common case costs nothing.
+// Upper bound for waiting on a killed process; it returns as soon as the process is gone.
 const PROCESS_EXIT_WAIT_MS = 1000;
-const PORT_RELEASE_WAIT_MS = 3000;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
-const PROCESS_IDENTIFIERS = [
-  'rcrouter',
-  '9router'  // Support cleanup of legacy processes
-];
-
 // Parse arguments
 let port = DEFAULT_PORT;
 let host = DEFAULT_HOST;
@@ -299,96 +295,6 @@ function killCloudflaredByAppPort(appPort) {
   });
 }
 
-// Kill all 9router processes (full machine-wide scan — slow on Windows, so the
-// launcher only uses it as a fallback; see stopPreviousInstance).
-function killAllAppProcesses() {
-  return new Promise((resolve) => {
-    try {
-      const platform = process.platform;
-      let pids = [];
-
-      if (platform === "win32") {
-        // Windows: use WMI to get full CommandLine (tasklist /V doesn't include it)
-        try {
-          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
-          const output = execSync(psCmd, {
-            encoding: "utf8",
-            windowsHide: true,
-            timeout: 5000
-          });
-          const lines = output.split("\n").slice(1).filter(l => l.trim());
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && (cmd.includes("rcrouter") || cmd.includes("9router")) && (cmd.includes("cli.js") || cmd.includes("rcrouter") || cmd.includes("9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const match = line.match(/^"(\d+)"/);
-              if (match && match[1] && match[1] !== process.pid.toString()) {
-                pids.push(match[1]);
-              }
-            }
-          });
-        } catch (e) {
-          // No processes found or error - continue
-        }
-      } else {
-        // macOS/Linux: use ps to find all matching processes
-        try {
-          const output = execSync('ps aux 2>/dev/null', {
-            encoding: 'utf8',
-            timeout: 5000
-          });
-          const lines = output.split('\n');
-
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && (cmd.includes("rcrouter") || cmd.includes("9router")) && (cmd.includes("cli.js") || cmd.includes("rcrouter") || cmd.includes("9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const parts = line.trim().split(/\s+/);
-              const pid = parts[1];
-              if (pid && !isNaN(pid) && pid !== process.pid.toString()) {
-                pids.push(pid);
-              }
-            }
-          });
-        } catch (e) {
-          // No processes found or error - continue
-        }
-      }
-
-      // Kill all found processes
-      if (pids.length > 0) {
-        pids.forEach(pid => {
-          try {
-            if (platform === "win32") {
-              execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
-            } else {
-              execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
-            }
-          } catch (err) {
-            // Process already dead or can't kill - continue
-          }
-        });
-
-        // Wait for processes to terminate — returns as soon as they are gone.
-        waitForPidsExit(pids.map(Number), { timeoutMs: PROCESS_EXIT_WAIT_MS }).then(() => resolve());
-      } else {
-        resolve();
-      }
-    } catch (err) {
-      // Silent fail - continue anyway
-      resolve();
-    }
-  });
-}
-
 // Sleep helper using SharedArrayBuffer wait (sync, no busy-loop)
 function sleepSync(ms) {
   try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* ignore */ }
@@ -434,55 +340,6 @@ function killProxyByPidFile() {
     }
     try { fs.unlinkSync(pidFile); } catch { }
   } catch { }
-}
-
-// Kill any process on specific port
-function killProcessOnPort(port) {
-  return new Promise((resolve) => {
-    try {
-      const platform = process.platform;
-      let pid;
-
-      if (platform === "win32") {
-        try {
-          const output = execSync(`netstat -ano | findstr :${port}`, {
-            encoding: 'utf8',
-            shell: true,
-            windowsHide: true,
-            timeout: 5000
-          }).trim();
-          const lines = output.split('\n').filter(l => l.includes('LISTENING'));
-          if (lines.length > 0) {
-            pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
-          }
-        } catch (e) {
-          // Port is free or error
-        }
-      } else {
-        // macOS/Linux
-        try {
-          const pidOutput = execSync(`lsof -ti:${port}`, {
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'ignore']
-          }).trim();
-          if (pidOutput) {
-            pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
-          }
-        } catch (e) {
-          // Port is free or error
-        }
-      }
-
-      // Wait for the port only when something was killed; return once it is free.
-      if (pid) waitForPortFree(port, { timeoutMs: PORT_RELEASE_WAIT_MS }).then(() => resolve());
-      else resolve();
-    } catch (err) {
-      // Silent fail - continue anyway
-      resolve();
-    }
-  });
 }
 
 
@@ -584,32 +441,38 @@ if (!fs.existsSync(serverPath)) {
 
 const launcherPidFile = getPidFilePath(getAppDataDir());
 
-// Stop the previous launcher by its PID record (fast path). The machine-wide
-// process scan (~0.5s per PowerShell call on Windows) runs only when the port is
-// still occupied afterwards, e.g. by a launcher from a version without a record.
+// Stop the previous launcher by its PID record, which names exactly our own processes (the
+// executable is checked too, so a stale record cannot hit an unrelated program). Anything else
+// holding the port is NOT ours: another RcRouter-unrelated server, or a separately installed
+// 9router, so it is left alone and the launch stops with a message instead of killing it.
 async function stopPreviousInstance(appPort) {
-  // MITM + tunnel run on separate ports/processes — killing them doesn't free the
-  // app port, so keep them off the critical path.
-  // Server-side MITM manager has stale-lock recovery and starts deferred (~3s).
   setImmediate(() => {
     try { killProxyByPidFile(); } catch {}
     try { killTunnelByPidFile(); } catch {}
-    try { killCloudflaredByAppPort(appPort); } catch {}
   });
 
   const killed = stopRecordedInstance(readPidRecord(launcherPidFile));
   try { fs.unlinkSync(launcherPidFile); } catch { }
   if (killed.length > 0) await waitForPidsExit(killed, { timeoutMs: PROCESS_EXIT_WAIT_MS });
 
-  if (!(await isPortInUse(appPort))) return;
-  await killAllAppProcesses();
-  await killProcessOnPort(appPort);
+  if (await isPortInUse(appPort)) {
+    const holder = findPortHolder(appPort);
+    const who = holder ? ` by ${holder.name || "another process"} (pid ${holder.pid})` : "";
+    startupSpinner.stop();
+    console.error(`❌ Port ${appPort} is already in use${who}.`);
+    console.error(`   ${BIN_NAME} only stops its own previous instance, so it leaves that process alone.`);
+    console.error(`   Stop it, or start on another port: ${BIN_NAME} --port <number>`);
+    process.exit(1);
+  }
+  // Safe now: the port is free, so a tunnel still aimed at it is an orphan of an old run.
+  try { killCloudflaredByAppPort(appPort); } catch {}
 }
 
 // Show progress immediately; run update check in parallel (not on the critical path).
 const startupSpinner = createSpinner(`Starting ${BIN_NAME} v${pkg.version}...`).start();
 const updatePromise = checkForUpdate();
 stopPreviousInstance(port).then(() => {
+  healRuntimes();
   startupSpinner.stop();
   startServer(updatePromise);
 });
@@ -837,8 +700,6 @@ function startServer(updatePromise) {
           console.log(`Run this after exit:\n`);
           console.log(`   \x1b[33m${INSTALL_CMD_LATEST}\x1b[0m\n`);
           cleanup();
-          await killAllAppProcesses(port);
-          await killProcessOnPort(port);
           setTimeout(() => process.exit(0), 200);
           return;
         } else if (choice === "web") {

@@ -2,8 +2,8 @@
 //
 // The launcher records its own PID and its server's PID in <dataDir>/launcher.pid.
 // The next launch stops exactly those processes instead of scanning every process
-// on the machine (a PowerShell WMI query costs ~0.5s per call on Windows), and only
-// falls back to the full scan when the port is still occupied.
+// on the machine (a PowerShell WMI query costs ~0.5s per call on Windows). Whatever
+// else holds the port is not ours and is never stopped; findPortHolder only names it.
 
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -172,7 +172,73 @@ function waitForPidsExit(pids, { isAlive = isPidAlive, ...opts } = {}) {
   return pollUntil(() => pids.every((pid) => !isAlive(pid)), opts);
 }
 
+// `lsof -Fpc` prints one "p<pid>" line then one "c<command>" line per listener.
+function parseLsofHolder(output) {
+  const pid = Number((String(output).match(/^p(\d+)/m) || [])[1]);
+  const name = ((String(output).match(/^c(.+)$/m) || [])[1] || "").trim();
+  return toPid(pid) ? { pid, name } : null;
+}
+
+// `ss -ltnp` rows end with: users:(("next-server (v1",pid=463120,fd=21))
+function parseSsHolder(output) {
+  const match = String(output).match(/\("([^"]*)",pid=(\d+)/);
+  const pid = Number(match && match[2]);
+  return toPid(pid) ? { pid, name: match[1] } : null;
+}
+
+// `netstat -ano` listener rows: "  TCP  0.0.0.0:20128  0.0.0.0:0  LISTENING  1234".
+function parseNetstatHolder(output, port) {
+  const row = String(output).split(/\r?\n/).find((line) =>
+    /\sLISTENING\s/.test(line) && new RegExp(`:${port}\\s`).test(line));
+  const pid = Number(row && row.trim().split(/\s+/).pop());
+  return toPid(pid) ? { pid, name: "" } : null;
+}
+
+/**
+ * Who is listening on `port`? Only used to tell the user what is in the way, so it is
+ * best-effort: null when nothing is found or the lookup tool is missing / not permitted.
+ */
+function findPortHolder(port, { run = execFileSync } = {}) {
+  try {
+    if (process.platform === "win32") {
+      const out = run("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8", windowsHide: true, timeout: EXE_LOOKUP_TIMEOUT_MS });
+      const holder = parseNetstatHolder(out, port);
+      if (!holder) return null;
+      let name = "";
+      try { name = path.basename(lookupExeName(holder.pid)); } catch { /* name is optional */ }
+      return { ...holder, name };
+    }
+    const out = run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fpc"], {
+      encoding: "utf8",
+      timeout: EXE_LOOKUP_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parseLsofHolder(out);
+  } catch {
+    return findWithSs(port, run);
+  }
+}
+
+// lsof cannot see every process's sockets (it printed nothing for a listener that ss shows).
+function findWithSs(port, run) {
+  if (process.platform !== "linux") return null;
+  try {
+    const out = run("ss", ["-H", "-ltnp", "sport", "=", `:${port}`], {
+      encoding: "utf8",
+      timeout: EXE_LOOKUP_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parseSsHolder(out);
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
+  findPortHolder,
+  parseLsofHolder,
+  parseNetstatHolder,
+  parseSsHolder,
   getPidFilePath,
   writePidRecord,
   readPidRecord,
