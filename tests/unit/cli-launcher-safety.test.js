@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it } from "vitest";
 // listened on the port; and any call, even `--version`, installed runtime packages into ~/.rcrouter.
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(import.meta.dirname, "../..");
-const cliFile = path.join(repoRoot, "cli", "cli.js");
+const cliDir = path.join(repoRoot, "cli");
+const cliFile = path.join(cliDir, "cli.js");
 const { version } = require("../../cli/package.json");
 const { findPortHolder, parseLsofHolder, parseNetstatHolder, parseSsHolder } = require("../../cli/src/cli/utils/launcherProcess.js");
 
@@ -45,9 +46,22 @@ function stubBin(holderPid) {
   return dir;
 }
 
+// The launcher refuses to start without a built app (cli/app, which git ignores, so a clean CI
+// checkout has none) and it checks that before it looks at the port. Run a scratch copy with a
+// stand-in server entry, so the result does not depend on whatever build this machine happens to have.
+function launcherCopy() {
+  const dir = tmp("rcrouter-launcher-");
+  for (const entry of ["cli.js", "package.json", "hooks", "src"]) {
+    fs.cpSync(path.join(cliDir, entry), path.join(dir, entry), { recursive: true });
+  }
+  fs.mkdirSync(path.join(dir, "app"));
+  fs.writeFileSync(path.join(dir, "app", "server.js"), "process.exit(0);\n");
+  return path.join(dir, "cli.js");
+}
+
 function runCli(args, { home, bin }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliFile, ...args], {
+    const child = spawn(process.execPath, [launcherCopy(), ...args], {
       env: {
         PATH: `${bin}${path.delimiter}${process.env.PATH}`,
         HOME: home,
