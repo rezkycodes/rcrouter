@@ -1,4 +1,4 @@
-# Unreleased
+# v1.2.1 (2026-11-20)
 
 ### Fixes
 - The launcher no longer stops processes that are not its own. When the port was busy it killed every `next-server` process on the machine (which is also what a separately installed 9router runs, along with any other Next.js app) and whatever listened on the port. Now it stops only the previous RcRouter instance it recorded itself; if something else holds the port it prints what (name and pid) and exits, and you free the port or pass `--port`. The in-app "update" exit no longer kills other processes either.
