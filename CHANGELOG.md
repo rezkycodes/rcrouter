@@ -1,3 +1,8 @@
+# Unreleased
+
+### Fixes
+- Installing the package no longer prints `npm warn install-scripts … @rezkycodes/rcrouter (postinstall: node hooks/postinstall.js)` on every `npm i -g`. npm 12 blocks install scripts that are not on the user's allow-list, so that script never ran for those users and only left the warning. The package now has no install scripts, and installing it runs no code. What the script did (warm up the SQLite and tray runtimes in `~/.rcrouter/runtime`) is done by the launcher the first time the server starts, as it already was whenever the script was blocked or skipped; that first start needs network once.
+
 # v1.2.1 (2026-11-20)
 
 ### Fixes

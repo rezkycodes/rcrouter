@@ -184,7 +184,7 @@ function ensureArm64TrayBin() {
 
   markArm64Attempt();
   console.log("⏳ Downloading native Apple Silicon tray binary...");
-  // pid-scoped: two concurrent starts (postinstall racing cli.js, or two
+  // pid-scoped: two concurrent starts (two
   // terminals) would otherwise interleave writes to one file, fail each other's
   // checksum, and delete each other's in-flight download from the catch below.
   const tmp = `${binPath}.arm64.${process.pid}.tmp`;

@@ -136,8 +136,7 @@ jobs:
 
       - name: Install CLI dependencies
         working-directory: cli
-        # --ignore-scripts: hooks/postinstall.js installs the SQLite runtime into the
-        # user's home for consumers; it must not run on the build machine.
+        # --ignore-scripts: install scripts of dependencies must not run on the build machine.
         run: pnpm --ignore-workspace install --frozen-lockfile --ignore-scripts
 
       - name: Build the CLI package (app bundle included)
