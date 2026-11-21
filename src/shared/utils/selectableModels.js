@@ -37,7 +37,9 @@ export const NO_AUTH_PROVIDER_IDS = Object.keys(AI_PROVIDERS)
 // Static registry stays as fallback when live fetch fails or is empty.
 // zed added in #4244: its backend customResolver already returns live models
 // but the frontend omitted it, hiding Zed entirely from the Combo picker.
-export const LIVE_CATALOG_PROVIDERS = ["cursor", "cline", "clinepass", "zed"];
+// commandcode serves one public catalog (not per-account); its static list lags upstream.
+// ModelSelectModal keeps its own copy of this list; a unit test fails when the two differ.
+export const LIVE_CATALOG_PROVIDERS = ["cursor", "cline", "clinepass", "commandcode", "zed"];
 
 export const ALL_PROVIDERS = { ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS };
 
@@ -54,7 +56,7 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
  * @param {Array}  [input.providerNodes]  Compatible-provider nodes
  * @param {Array}  [input.customModels]   Rows from /api/models/custom
  * @param {object} [input.disabledModels] alias -> [modelId]
- * @param {object} [input.liveModels]     { cursor: [], cline: [], clinepass: [], zed: [] }
+ * @param {object} [input.liveModels]     { cursor: [], cline: [], clinepass: [], commandcode: [], zed: [] }
  * @returns {Object<string, {name: string, alias: string, color: string, models: Array}>}
  */
 export function buildModelGroups({
@@ -79,10 +81,13 @@ export function buildModelGroups({
   // with no connection row at all stay, e.g. keyless local endpoints.
   const deactivatedProviderIds = getDeactivatedProviderIds(effectiveConnections);
   const live = liveModels || {};
-  const cursorModels = asArray(live.cursor);
-  const clineModels = asArray(live.cline);
-  const clinepassModels = asArray(live.clinepass);
-  const zedModels = asArray(live.zed);
+  // The provider's live catalog when it has one and it answered, else the static registry list.
+  // Passthrough providers need this as much as the standard branch does: commandcode and zed
+  // are both passthrough, and their static list is empty or stale.
+  const catalogModelsFor = (providerId) => {
+    const liveList = LIVE_CATALOG_PROVIDERS.includes(providerId) ? asArray(live[providerId]) : [];
+    return liveList.length > 0 ? liveList : getModelsByProviderId(providerId);
+  };
 
   const groups = {};
 
@@ -196,7 +201,7 @@ export function buildModelGroups({
         // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
         const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
         const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
-        const hardcoded = getModelsByProviderId(providerId)
+        const hardcoded = catalogModelsFor(providerId)
           .filter((m) => !getModelKind(m) || getModelKind(m) === "llm")
           .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
           .filter((m) => !seen.has(m.value));
@@ -265,10 +270,7 @@ export function buildModelGroups({
         hasModels: mergedModels.length > 0,
       };
     } else {
-      const liveModels = providerId === "cursor" ? cursorModels : providerId === "cline" ? clineModels : providerId === "clinepass" ? clinepassModels : providerId === "zed" ? zedModels : [];
-      const hardcodedModels = liveModels.length > 0
-        ? liveModels
-        : getModelsByProviderId(providerId);
+      const hardcodedModels = catalogModelsFor(providerId);
       const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
       // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider

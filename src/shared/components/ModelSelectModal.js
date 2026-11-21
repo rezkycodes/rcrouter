@@ -286,6 +286,21 @@ export default function ModelSelectModal({
       return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
     });
 
+    // The provider's live catalog when it has one and it answered, else the static registry list.
+    // Passthrough providers need this as much as the standard branch does: commandcode and zed
+    // are both passthrough, and their static list is empty or stale.
+    const liveModelsByProvider = {
+      cursor: cursorModels,
+      cline: clineModels,
+      clinepass: clinepassModels,
+      commandcode: commandcodeModels,
+      zed: zedModels,
+    };
+    const catalogModelsFor = (providerId) => {
+      const liveList = Object.prototype.hasOwnProperty.call(liveModelsByProvider, providerId) ? liveModelsByProvider[providerId] : [];
+      return liveList.length > 0 ? liveList : getModelsByProviderId(providerId);
+    };
+
     sortedProviderIds.forEach((providerId) => {
       const alias = getProviderAlias(providerId);
       const providerInfo = allProviders[providerId] || { name: providerId, color: "#666" };
@@ -340,7 +355,7 @@ export default function ModelSelectModal({
           // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
           const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
-          const hardcoded = getModelsByProviderId(providerId)
+          const hardcoded = catalogModelsFor(providerId)
             .filter((m) => !getModelKind(m) || getModelKind(m) === "llm")
             .map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) }))
             .filter((m) => !seen.has(m.value));
@@ -409,10 +424,7 @@ export default function ModelSelectModal({
           hasModels: mergedModels.length > 0,
         };
       } else {
-        const liveModels = providerId === "cursor" ? cursorModels : providerId === "cline" ? clineModels : providerId === "clinepass" ? clinepassModels : providerId === "commandcode" ? commandcodeModels : providerId === "zed" ? zedModels : [];
-        const hardcodedModels = liveModels.length > 0
-          ? liveModels
-          : getModelsByProviderId(providerId);
+        const hardcodedModels = catalogModelsFor(providerId);
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
