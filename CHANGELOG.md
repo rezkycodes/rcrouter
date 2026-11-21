@@ -1,3 +1,8 @@
+# v1.2.3 (2026-11-21)
+
+### Fixes
+- The combo model picker now lists every model Command Code publishes, such as `cmc/recursive/flint-v1.0:free`. It showed only the 25 models of the built-in list (the catalog has 104) because Command Code and Zed are handled in a branch of the picker that never read their live catalog. The Zed models in the picker had the same problem. The CLI tools "Add All Active Models" button also skipped the live Command Code catalog; it now includes it. When the catalog cannot be fetched, the built-in list is shown as before.
+
 # v1.2.2 (2026-11-21)
 
 ### Fixes
